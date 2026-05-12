@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck – Yangon Proof</title>
+    <title>VitalCheck – Fixed</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -98,6 +98,7 @@
             color: #6b7280;
             margin-top: 16px;
             text-align: center;
+            word-break: break-all;
         }
     </style>
 </head>
@@ -134,7 +135,22 @@
     </div>
 
     <script type="module">
-        import { VitalLens } from 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.esm.js';
+        // Debug: Log when script starts
+        console.log('Script loaded');
+        document.getElementById('debug').innerHTML = 'Script loaded at ' + new Date().toLocaleTimeString() + '<br>';
+        
+        let VitalLens;
+        try {
+            const module = await import('https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.esm.js');
+            VitalLens = module.VitalLens;
+            console.log('VitalLens imported successfully');
+            document.getElementById('debug').innerHTML += '✓ VitalLens loaded<br>';
+        } catch (err) {
+            console.error('Failed to load VitalLens:', err);
+            document.getElementById('debug').innerHTML += `❌ Failed to load VitalLens: ${err.message}<br>`;
+            document.getElementById('status').textContent = '❌ Failed to load library. Check network.';
+            document.getElementById('status').classList.add('error');
+        }
         
         const video = document.getElementById('video');
         const startBtn = document.getElementById('startBtn');
@@ -147,7 +163,12 @@
         
         function logDebug(msg) {
             console.log(msg);
-            debugDiv.innerHTML = `${new Date().toLocaleTimeString()}: ${msg}<br>${debugDiv.innerHTML}`.slice(0, 500);
+            debugDiv.innerHTML += `${new Date().toLocaleTimeString()}: ${msg}<br>`;
+            // Keep last 20 lines
+            const lines = debugDiv.innerHTML.split('<br>');
+            if (lines.length > 25) {
+                debugDiv.innerHTML = lines.slice(-20).join('<br>');
+            }
         }
         
         async function requestWakeLock() {
@@ -156,7 +177,7 @@
                     wakeLock = await navigator.wakeLock.request('screen');
                     logDebug('✅ Wake Lock active');
                 } catch (err) {
-                    logDebug('⚠️ Wake Lock failed (non-critical)');
+                    logDebug('⚠️ Wake Lock failed (non-critical): ' + err.message);
                 }
             }
         }
@@ -165,7 +186,7 @@
             try {
                 statusDiv.textContent = '📷 Requesting camera...';
                 statusDiv.classList.remove('error', 'warning');
-                logDebug('Requesting camera...');
+                logDebug('Requesting camera permission...');
                 
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
@@ -174,6 +195,8 @@
                         height: { ideal: 480 }
                     } 
                 });
+                logDebug('Camera stream obtained');
+                
                 video.srcObject = stream;
                 await new Promise((resolve) => video.onloadedmetadata = resolve);
                 await video.play();
@@ -183,100 +206,117 @@
                 return true;
             } catch (err) {
                 logDebug(`❌ Camera error: ${err.message}`);
-                statusDiv.textContent = `❌ Camera access denied. Use HTTPS and allow camera.`;
+                statusDiv.textContent = `❌ Camera: ${err.message}`;
                 statusDiv.classList.add('error');
                 throw err;
             }
         }
         
-        startBtn.onclick = async () => {
-            if (!window.isSecureContext) {
-                statusDiv.textContent = '❌ HTTPS required';
-                statusDiv.classList.add('error');
-                return;
-            }
-            
-            try {
-                if (!stream) await initCamera();
-                await requestWakeLock();
+        // Make sure button exists before adding click handler
+        if (startBtn) {
+            logDebug('Button found, attaching click handler');
+            startBtn.onclick = async () => {
+                logDebug('Button clicked!');
                 
-                statusDiv.textContent = '🔍 Scanning 30 seconds... Keep still';
-                statusDiv.classList.remove('error', 'warning');
-                startBtn.disabled = true;
-                logDebug('Starting VitalLens scan with 45s timeout');
-                
-                // IMPORTANT: REPLACE WITH YOUR FRESH API KEY
-                const scanner = new VitalLens({
-                    apiKey: 'poY83wP0pI5rOTK1mUS4d3EzmqOmsEF1nh6yD3fa',  // <-- GET NEW KEY FROM rouast.com/api
-                    method: 'vitallens'
-                });
-                
-                // Yangon-proof timeout (45 seconds max)
-                const scanPromise = scanner.analyze(video, { duration: 30000 });
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Network timeout. Please try again with stable connection.')), 45000)
-                );
-                
-                const result = await Promise.race([scanPromise, timeoutPromise]);
-                logDebug('✅ Scan completed');
-                
-                if (wakeLock) {
-                    await wakeLock.release();
-                    wakeLock = null;
-                    logDebug('Wake Lock released');
-                }
-                
-                // Extract values
-                const hr = result.heartRate || result.vitals?.heart_rate?.value;
-                const hrv = result.hrv || result.vitals?.hrv_sdnn?.value;
-                const rr = result.respiratoryRate || result.vitals?.respiratory_rate?.value;
-                
-                let stress = '--';
-                if (hrv && !isNaN(hrv)) {
-                    stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100))) + '%';
-                }
-                
-                if (hr) document.getElementById('hr').innerHTML = Math.round(hr) + ' <span style="font-size:14px;color:#6b7280;">BPM</span>';
-                if (hrv) document.getElementById('hrv').innerHTML = Math.round(hrv) + ' <span style="font-size:14px;color:#6b7280;">ms</span>';
-                if (rr) document.getElementById('rr').innerHTML = Math.round(rr) + ' <span style="font-size:14px;color:#6b7280;">/min</span>';
-                if (stress !== '--') document.getElementById('stress').innerHTML = stress;
-                
-                resultsDiv.classList.add('show');
-                statusDiv.textContent = '✅ Scan complete!';
-                startBtn.disabled = false;
-                
-            } catch (err) {
-                logDebug(`❌ Error: ${err.message}`);
-                
-                if (wakeLock) {
-                    try { await wakeLock.release(); } catch(e) {}
-                    wakeLock = null;
-                }
-                
-                let errorMsg = err.message;
-                if (errorMsg.includes('403') || errorMsg.includes('Unauthorized') || errorMsg.includes('API key')) {
-                    errorMsg = 'Invalid API key. Please check your VitalLens key.';
+                if (!window.isSecureContext) {
+                    logDebug('ERROR: Not a secure context');
+                    statusDiv.textContent = '❌ HTTPS required';
                     statusDiv.classList.add('error');
-                } else if (errorMsg.includes('429')) {
-                    errorMsg = 'API rate limit exceeded. Try again later.';
-                    statusDiv.classList.add('error');
-                } else if (errorMsg.includes('timeout')) {
-                    errorMsg = 'Connection timeout. Please check your internet and try again.';
-                    statusDiv.classList.add('warning');
-                } else {
-                    statusDiv.classList.add('error');
+                    return;
                 }
                 
-                statusDiv.textContent = `❌ ${errorMsg}`;
-                startBtn.disabled = false;
-            }
-        };
+                try {
+                    if (!VitalLens) {
+                        throw new Error('VitalLens library not loaded');
+                    }
+                    
+                    if (!stream) {
+                        logDebug('No camera stream, initializing...');
+                        await initCamera();
+                    }
+                    
+                    await requestWakeLock();
+                    
+                    statusDiv.textContent = '🔍 Scanning 30 seconds... Keep still';
+                    statusDiv.classList.remove('error', 'warning');
+                    startBtn.disabled = true;
+                    logDebug('Starting VitalLens scan...');
+                    
+                    // IMPORTANT: YOU NEED A FRESH API KEY
+                    // Get one from https://rouast.com/api
+                    const scanner = new VitalLens({
+                        apiKey: 'YOUR_FRESH_API_KEY_HERE',  // <-- REPLACE THIS
+                        method: 'vitallens'
+                    });
+                    
+                    logDebug('VitalLens instance created, calling analyze()');
+                    
+                    const scanPromise = scanner.analyze(video, { duration: 30000 });
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Network timeout (45s)')), 45000)
+                    );
+                    
+                    const result = await Promise.race([scanPromise, timeoutPromise]);
+                    logDebug('✅ Scan completed successfully');
+                    
+                    if (wakeLock) {
+                        await wakeLock.release();
+                        wakeLock = null;
+                    }
+                    
+                    const hr = result.heartRate || result.vitals?.heart_rate?.value;
+                    const hrv = result.hrv || result.vitals?.hrv_sdnn?.value;
+                    const rr = result.respiratoryRate || result.vitals?.respiratory_rate?.value;
+                    
+                    let stress = '--';
+                    if (hrv && !isNaN(hrv)) {
+                        stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100))) + '%';
+                    }
+                    
+                    if (hr) document.getElementById('hr').innerHTML = Math.round(hr) + ' <span style="font-size:14px;color:#6b7280;">BPM</span>';
+                    if (hrv) document.getElementById('hrv').innerHTML = Math.round(hrv) + ' <span style="font-size:14px;color:#6b7280;">ms</span>';
+                    if (rr) document.getElementById('rr').innerHTML = Math.round(rr) + ' <span style="font-size:14px;color:#6b7280;">/min</span>';
+                    if (stress !== '--') document.getElementById('stress').innerHTML = stress;
+                    
+                    resultsDiv.classList.add('show');
+                    statusDiv.textContent = '✅ Scan complete!';
+                    startBtn.disabled = false;
+                    
+                } catch (err) {
+                    logDebug(`❌ Scan error: ${err.message}`);
+                    logDebug(err.stack || 'No stack trace');
+                    
+                    if (wakeLock) {
+                        try { await wakeLock.release(); } catch(e) {}
+                        wakeLock = null;
+                    }
+                    
+                    let errorMsg = err.message;
+                    if (errorMsg.includes('403') || errorMsg.includes('Unauthorized')) {
+                        errorMsg = 'Invalid API key. Get a fresh key from rouast.com/api';
+                    } else if (errorMsg.includes('429')) {
+                        errorMsg = 'API rate limit exceeded. Try again later.';
+                    } else if (errorMsg.includes('timeout')) {
+                        errorMsg = 'Network timeout. Check your connection.';
+                    } else if (errorMsg.includes('load') || errorMsg.includes('import')) {
+                        errorMsg = 'Failed to load library. Check your internet.';
+                    }
+                    
+                    statusDiv.textContent = `❌ ${errorMsg}`;
+                    statusDiv.classList.add('error');
+                    startBtn.disabled = false;
+                }
+            };
+        } else {
+            logDebug('ERROR: startBtn not found in DOM');
+        }
         
-        // Initial check
+        // Check secure context
         if (!window.isSecureContext) {
+            logDebug('ERROR: Not a secure context (HTTPS required)');
             statusDiv.textContent = '❌ HTTPS required for camera access';
             statusDiv.classList.add('error');
-            startBtn.disabled = true;
+            if (startBtn) startBtn.disabled = true;
         } else {
             logDebug('✅ Secure context (HTTPS) detected');
         }
