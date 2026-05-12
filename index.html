@@ -208,88 +208,83 @@
 
     <!-- Load the official VitalLens JavaScript library from CDN -->
     <script type="module">
-        import { VitalLensScan } from 'https://cdn.jsdelivr.net/npm/vitallens@2.0.0-beta/dist/vitallens.browser.js';
+        import 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js';
 
         const apiStatus = document.getElementById('apiStatus');
         const resultsPanel = document.getElementById('resultsPanel');
         const resetBtn = document.getElementById('resetBtn');
-        
-        // Get the web component element
         const scanner = document.getElementById('vitalScan');
 
-        // Check if API key is configured
-        const apiKey = scanner.getAttribute('api-key');
-        if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-            apiStatus.textContent = '⚠️ API key required. Get your free key at https://rouast.com/api';
-            apiStatus.classList.add('error');
-        } else {
-            apiStatus.textContent = '✅ VitalLens API ready. Click the button above to start your 30-second health scan.';
-            apiStatus.classList.remove('error');
+        // Helper function to initialize event listeners and UI
+        function initVitalLens() {
+            console.log('✓ VitalLens component is defined and ready');
+            
+            const apiKey = scanner.getAttribute('api-key');
+            if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
+                apiStatus.textContent = '⚠️ API key required. Get your free key at https://rouast.com/api';
+                apiStatus.classList.add('error');
+            } else {
+                apiStatus.textContent = '✅ VitalLens API ready. Click the button above to start.';
+                apiStatus.classList.remove('error');
+            }
+
+            // Remove old listeners to prevent duplicates
+            scanner.removeEventListener('vitallens-result', handleResults);
+            scanner.removeEventListener('vitallens-error', handleError);
+            
+            // Add fresh listeners
+            scanner.addEventListener('vitallens-result', handleResults);
+            scanner.addEventListener('vitallens-error', handleError);
         }
 
-        // Listen for scan results from the VitalLens web component
-        scanner.addEventListener('vitallens-result', (event) => {
+        function handleResults(event) {
             const results = event.detail;
-            console.log('VitalLens results:', results);
+            console.log('Results received:', results);
             
-            // Extract vital signs from the API response[citation:6]
             const heartRate = results.vitals?.heart_rate?.value || results.heartRate;
-            const hrConfidence = results.vitals?.heart_rate?.confidence || results.heartRateConfidence;
-            
             const hrv = results.vitals?.hrv_sdnn?.value || results.hrv;
-            const hrvConfidence = results.vitals?.hrv_sdnn?.confidence;
-            
             const respRate = results.vitals?.respiratory_rate?.value || results.respiratoryRate;
-            const respConfidence = results.vitals?.respiratory_rate?.confidence;
-            
-            // Update UI with real data
+
             if (heartRate) {
                 document.getElementById('hrValue').innerHTML = Math.round(heartRate) + ' <span class="metric-unit">BPM</span>';
-                if (hrConfidence) {
-                    document.getElementById('hrConfidence').innerHTML = `Confidence: ${Math.round(hrConfidence * 100)}%`;
-                }
             }
             
             if (hrv) {
                 document.getElementById('hrvValue').innerHTML = Math.round(hrv) + ' <span class="metric-unit">ms</span>';
-                if (hrvConfidence) {
-                    document.getElementById('hrvConfidence').innerHTML = `Confidence: ${Math.round(hrvConfidence * 100)}%`;
-                }
-            }
-            
-            if (respRate) {
-                document.getElementById('rrValue').innerHTML = Math.round(respRate) + ' <span class="metric-unit">/min</span>';
-                if (respConfidence) {
-                    document.getElementById('rrConfidence').innerHTML = `Confidence: ${Math.round(respConfidence * 100)}%`;
-                }
-            }
-            
-            // Calculate stress level from HRV (lower HRV = higher stress)
-            if (hrv) {
                 let stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100)));
                 document.getElementById('stressValue').innerHTML = stress + ' <span class="metric-unit">%</span>';
             }
             
-            // Show results panel
+            if (respRate) {
+                document.getElementById('rrValue').innerHTML = Math.round(respRate) + ' <span class="metric-unit">/min</span>';
+            }
+
             resultsPanel.classList.add('show');
             resetBtn.style.display = 'block';
-            apiStatus.textContent = '✅ Scan complete! Your vital signs are shown below.';
-        });
-        
-        // Handle errors
-        scanner.addEventListener('vitallens-error', (event) => {
+            apiStatus.textContent = '✅ Scan complete!';
+            apiStatus.classList.remove('error');
+        }
+
+        function handleError(event) {
             console.error('VitalLens error:', event.detail);
-            apiStatus.textContent = `⚠️ ${event.detail?.error || 'Scan failed. Please ensure good lighting and try again.'}`;
+            apiStatus.textContent = `⚠️ ${event.detail?.error || 'Scan failed. Ensure good lighting.'}`;
             apiStatus.classList.add('error');
-        });
-        
-        // Reset button to start a new scan
+        }
+
+        // Check if component is already defined
+        if (customElements.get('vitallens-scan')) {
+            // Already loaded
+            initVitalLens();
+        } else {
+            // Wait for it to load
+            customElements.whenDefined('vitallens-scan').then(initVitalLens);
+        }
+
         resetBtn.addEventListener('click', () => {
             resultsPanel.classList.remove('show');
             resetBtn.style.display = 'none';
-            apiStatus.textContent = '✅ VitalLens API ready. Click the button above to start your 30-second health scan.';
+            apiStatus.textContent = '✅ Ready to scan. Click the VitalLens button above.';
             apiStatus.classList.remove('error');
-            // The web component should reset itself when clicked again
         });
     </script>
 </body>
