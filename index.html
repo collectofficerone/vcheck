@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck – Fixed</title>
+    <title>VitalCheck – Complete Fixed Version</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: system-ui, sans-serif;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(145deg, #0a0f1d 0%, #0f1629 100%);
             min-height: 100vh;
             padding: 16px;
@@ -38,14 +38,18 @@
             font-size: 14px;
             margin-bottom: 24px;
         }
-        video {
+        
+        /* VitalLens component styling */
+        vitallens-scan {
+            display: block;
             width: 100%;
-            border-radius: 24px;
-            background: #000;
+            min-height: 450px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 32px;
+            overflow: hidden;
             margin-bottom: 20px;
-            aspect-ratio: 4/3;
-            object-fit: cover;
         }
+        
         button {
             width: 100%;
             padding: 16px;
@@ -56,8 +60,10 @@
             font-size: 18px;
             font-weight: 600;
             cursor: pointer;
+            margin-bottom: 16px;
         }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
         .result {
             margin-top: 20px;
             padding: 20px;
@@ -66,15 +72,19 @@
             display: none;
         }
         .result.show { display: block; }
+        
         .metric {
             display: flex;
             justify-content: space-between;
+            align-items: baseline;
             padding: 12px 0;
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
         .metric:last-child { border-bottom: none; }
         .metric-label { color: #9ca3af; font-size: 14px; }
-        .metric-value { font-size: 24px; font-weight: 700; color: #f3f4f6; }
+        .metric-value { font-size: 28px; font-weight: 700; color: #f3f4f6; }
+        .metric-unit { font-size: 12px; color: #6b7280; font-weight: normal; }
+        
         .status {
             text-align: center;
             margin: 16px 0;
@@ -83,220 +93,217 @@
         }
         .status.error { color: #f87171; }
         .status.warning { color: #fbbf24; }
+        
         .privacy-note {
             text-align: center;
             font-size: 11px;
             color: #4b5563;
             margin-top: 16px;
         }
+        
         .debug {
             background: rgba(0,0,0,0.5);
             border-radius: 12px;
-            padding: 8px;
-            font-family: monospace;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
             font-size: 10px;
-            color: #6b7280;
+            color: #86efac;
             margin-top: 16px;
-            text-align: center;
+            text-align: left;
             word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
         }
+        
+        .reset-btn {
+            background: rgba(96,165,250,0.2);
+            border: 1px solid rgba(96,165,250,0.5);
+            margin-top: 12px;
+            display: none;
+        }
+        .reset-btn:hover { background: rgba(96,165,250,0.3); }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🩺 VitalCheck</h1>
-        <div class="subhead">30 seconds • Works on slow networks • No app required</div>
+        <div class="subhead">30-second health scan • No app required • Works on mobile</div>
         
-        <video id="video" autoplay playsinline muted></video>
-        <button id="startBtn">Start Health Scan</button>
+        <!-- VitalLens Web Component - handles camera, face detection, and scanning -->
+        <vitallens-scan 
+            id="vitalScan"
+            api-key="YOUR_FRESH_API_KEY_HERE"
+            method="vitallens">
+        </vitallens-scan>
+        
         <div id="status" class="status">Ready</div>
         
         <div id="results" class="result">
             <div class="metric">
                 <span class="metric-label">❤️ Heart Rate</span>
-                <span class="metric-value" id="hr">-- BPM</span>
+                <span class="metric-value" id="hrValue">-- <span class="metric-unit">BPM</span></span>
             </div>
             <div class="metric">
                 <span class="metric-label">🔄 HRV (SDNN)</span>
-                <span class="metric-value" id="hrv">-- ms</span>
+                <span class="metric-value" id="hrvValue">-- <span class="metric-unit">ms</span></span>
             </div>
             <div class="metric">
-                <span class="metric-label">🌬️ Respiration</span>
-                <span class="metric-value" id="rr">-- /min</span>
+                <span class="metric-label">🌬️ Respiratory Rate</span>
+                <span class="metric-value" id="rrValue">-- <span class="metric-unit">/min</span></span>
             </div>
             <div class="metric">
                 <span class="metric-label">⚡ Stress Level</span>
-                <span class="metric-value" id="stress">-- %</span>
+                <span class="metric-value" id="stressValue">-- <span class="metric-unit">%</span></span>
             </div>
         </div>
+        
+        <button id="resetBtn" class="reset-btn">Start New Scan</button>
         
         <div class="privacy-note">🔒 Video processed locally — frames are discarded immediately</div>
         <div id="debug" class="debug"></div>
     </div>
 
     <script type="module">
-        const video = document.getElementById('video');
-        const startBtn = document.getElementById('startBtn');
-        const statusDiv = document.getElementById('status');
+        // Import the browser bundle - this auto-registers the <vitallens-scan> component
+        import 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js';
+        
+        // DOM elements
         const debugDiv = document.getElementById('debug');
+        const statusDiv = document.getElementById('status');
         const resultsDiv = document.getElementById('results');
-
-        let VitalLens;
-        let stream = null;
-        let wakeLock = null;
-
-        function logDebug(msg) {
-            console.log(msg);
-            debugDiv.innerHTML = `${new Date().toLocaleTimeString()}: ${msg}<br>${debugDiv.innerHTML}`.slice(0, 500);
+        const resetBtn = document.getElementById('resetBtn');
+        const scanner = document.getElementById('vitalScan');
+        
+        // Helper: log to debug panel
+        function logDebug(msg, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : (type === 'success' ? '✅' : '📌');
+            console.log(`[${timestamp}] ${prefix} ${msg}`);
+            debugDiv.innerHTML = `${timestamp}: ${prefix} ${msg}<br>${debugDiv.innerHTML}`;
+            
+            // Keep last 30 lines
+            const lines = debugDiv.innerHTML.split('<br>');
+            if (lines.length > 35) {
+                debugDiv.innerHTML = lines.slice(0, 30).join('<br>');
+            }
         }
-
-        // Wrap in an async function to handle the library import safely
-        (async function initApp() {
-            logDebug('Application initializing...');
-
-            // 1. Load the Library - USING BROWSER BUNDLE (includes all dependencies)
+        
+        // Check secure context first
+        if (!window.isSecureContext) {
+            logDebug('HTTPS required - camera access blocked', 'error');
+            statusDiv.textContent = '❌ HTTPS required for camera access';
+            statusDiv.classList.add('error');
+        } else {
+            logDebug('Secure context (HTTPS) detected', 'success');
+        }
+        
+        // Wait for the web component to be registered
+        async function init() {
+            logDebug('Waiting for vitallens-scan component...');
+            
             try {
-                // CRITICAL FIX: Use .browser.js instead of .esm.js
-                // The browser bundle includes TensorFlow.js and all other dependencies
-                const module = await import('https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js');
-                VitalLens = module.VitalLens;
-                logDebug('✓ VitalLens library loaded');
-            } catch (err) {
-                logDebug('❌ Library load failed: ' + err.message);
-                statusDiv.textContent = '❌ Failed to load library';
-                statusDiv.classList.add('error');
-                return;
-            }
-
-            // 2. Camera Setup
-            async function startCamera() {
-                try {
-                    logDebug('Requesting camera...');
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
-                    });
-                    video.srcObject = stream;
-                    await new Promise((resolve) => video.onloadedmetadata = resolve);
-                    await video.play();
-                    logDebug('✓ Camera stream active');
-                    return true;
-                } catch (err) {
-                    logDebug('❌ Camera error: ' + err.message);
-                    statusDiv.textContent = '❌ Camera error: ' + err.message;
-                    statusDiv.classList.add('error');
-                    return false;
-                }
-            }
-
-            // 3. Button Click Logic
-            startBtn.onclick = async () => {
-                logDebug('Button clicked. Starting sequence...');
+                await customElements.whenDefined('vitallens-scan');
+                logDebug('Component registered successfully', 'success');
+                statusDiv.textContent = '✅ Ready. Tap the VitalLens button above to start.';
                 
-                if (!window.isSecureContext) {
-                    statusDiv.textContent = '❌ HTTPS Required';
-                    statusDiv.classList.add('error');
-                    return;
-                }
-
-                try {
-                    if (!stream) {
-                        const cameraOk = await startCamera();
-                        if (!cameraOk) return;
-                    }
-
-                    // Request WakeLock to prevent phone sleep
-                    if ('wakeLock' in navigator) {
-                        try {
-                            wakeLock = await navigator.wakeLock.request('screen');
-                            logDebug('✓ Wake Lock active');
-                        } catch (err) {
-                            logDebug('⚠️ Wake Lock not available: ' + err.message);
-                        }
-                    }
-
-                    statusDiv.textContent = '🔍 Scanning... Keep still (30s)';
-                    statusDiv.classList.remove('error');
-                    startBtn.disabled = true;
-
-                    // IMPORTANT: REPLACE WITH YOUR FRESH API KEY
-                    // Get one from https://rouast.com/api
-                    const scanner = new VitalLens({
-                        apiKey: 'poY83wP0pI5rOTK1mUS4d3EzmqOmsEF1nh6yD3fa',  // <-- CHANGE THIS
-                        method: 'vitallens'
-                    });
-
-                    logDebug('Running analysis...');
-                    
-                    // Add countdown timer for visual feedback
-                    let secondsLeft = 30;
-                    const countdownInterval = setInterval(() => {
-                        secondsLeft--;
-                        if (secondsLeft > 0) {
-                            statusDiv.textContent = `🔍 Scanning... ${secondsLeft}s left`;
-                        } else {
-                            clearInterval(countdownInterval);
-                        }
-                    }, 1000);
-                    
-                    const scanPromise = scanner.analyze(video, { duration: 30000 });
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Network timeout (45s)')), 45000)
-                    );
-
-                    const result = await Promise.race([scanPromise, timeoutPromise]);
-                    clearInterval(countdownInterval);
-                    logDebug('✓ Analysis complete');
-
-                    // Extract and Display
-                    const hr = result.heartRate || result.vitals?.heart_rate?.value;
-                    const hrv = result.hrv || result.vitals?.hrv_sdnn?.value;
-                    const rr = result.respiratoryRate || result.vitals?.respiratory_rate?.value;
-                    
-                    // Calculate stress from HRV (lower HRV = higher stress)
-                    let stress = '--';
-                    if (hrv && !isNaN(hrv)) {
-                        stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100))) + '%';
-                    }
-
-                    document.getElementById('hr').innerHTML = Math.round(hr || 0) + ' <span style="font-size:14px;color:#6b7280;">BPM</span>';
-                    document.getElementById('hrv').innerHTML = Math.round(hrv || 0) + ' <span style="font-size:14px;color:#6b7280;">ms</span>';
-                    document.getElementById('rr').innerHTML = Math.round(rr || 0) + ' <span style="font-size:14px;color:#6b7280;">/min</span>';
-                    document.getElementById('stress').innerHTML = stress;
-                    
-                    resultsDiv.classList.add('show');
-                    statusDiv.textContent = '✅ Scan complete!';
-                    statusDiv.classList.remove('error');
-
-                } catch (err) {
-                    logDebug('❌ Error: ' + err.message);
-                    
-                    let userMessage = err.message;
-                    if (userMessage.includes('403') || userMessage.includes('Unauthorized')) {
-                        userMessage = 'Invalid API key. Get a fresh key from rouast.com/api';
-                    } else if (userMessage.includes('429')) {
-                        userMessage = 'API rate limit exceeded. Try again later.';
-                    } else if (userMessage.includes('timeout')) {
-                        userMessage = 'Network timeout. Check your internet connection.';
-                    }
-                    
-                    statusDiv.textContent = '❌ ' + userMessage;
-                    statusDiv.classList.add('error');
-                } finally {
-                    startBtn.disabled = false;
-                    if (wakeLock) {
-                        try {
-                            await wakeLock.release();
-                            wakeLock = null;
-                            logDebug('Wake Lock released');
-                        } catch (err) {
-                            // Ignore release errors
-                        }
-                    }
-                }
-            };
-
-            logDebug('✓ Setup finished. Ready.');
-        })();
+                // Listen for scan results
+                scanner.addEventListener('vitallens-result', handleResults);
+                scanner.addEventListener('vitallens-error', handleError);
+                scanner.addEventListener('vitallens-start', handleStart);
+                
+                // Verify the component is interactive
+                logDebug('Event listeners attached. Waiting for user interaction.');
+                
+            } catch (err) {
+                logDebug(`Component registration failed: ${err.message}`, 'error');
+                statusDiv.textContent = '❌ Failed to load VitalLens component';
+                statusDiv.classList.add('error');
+            }
+        }
+        
+        function handleStart() {
+            logDebug('Scan started - 30 seconds', 'success');
+            statusDiv.textContent = '🔍 Scanning... Please stay still (30s)';
+            statusDiv.classList.remove('error');
+            resultsDiv.classList.remove('show');
+        }
+        
+        function handleResults(event) {
+            const results = event.detail;
+            logDebug(`Results received: ${JSON.stringify(results).substring(0, 200)}`, 'success');
+            
+            // Extract vital signs (handles both flat and nested structures)
+            const heartRate = results.heartRate || results.vitals?.heart_rate?.value;
+            const hrv = results.hrv || results.vitals?.hrv_sdnn?.value;
+            const respRate = results.respiratoryRate || results.vitals?.respiratory_rate?.value;
+            
+            // Calculate stress level from HRV (lower HRV = higher stress)
+            let stress = '--';
+            if (hrv && !isNaN(hrv)) {
+                const stressNum = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100)));
+                stress = stressNum + '%';
+            }
+            
+            // Update UI
+            if (heartRate) {
+                document.getElementById('hrValue').innerHTML = Math.round(heartRate) + ' <span class="metric-unit">BPM</span>';
+            }
+            if (hrv) {
+                document.getElementById('hrvValue').innerHTML = Math.round(hrv) + ' <span class="metric-unit">ms</span>';
+            }
+            if (respRate) {
+                document.getElementById('rrValue').innerHTML = Math.round(respRate) + ' <span class="metric-unit">/min</span>';
+            }
+            if (stress !== '--') {
+                document.getElementById('stressValue').innerHTML = stress;
+            }
+            
+            // Show results panel
+            resultsDiv.classList.add('show');
+            resetBtn.style.display = 'block';
+            statusDiv.textContent = '✅ Scan complete!';
+            logDebug('Display updated successfully', 'success');
+        }
+        
+        function handleError(event) {
+            const errorDetail = event.detail;
+            const errorMsg = errorDetail?.error || errorDetail?.message || 'Unknown error';
+            logDebug(`Scan error: ${errorMsg}`, 'error');
+            
+            // Provide specific guidance based on error
+            if (errorMsg.includes('403') || errorMsg.includes('unauthorized') || errorMsg.includes('key')) {
+                statusDiv.textContent = '❌ Invalid API key. Get a fresh key from rouast.com/api';
+            } else if (errorMsg.includes('429')) {
+                statusDiv.textContent = '❌ Rate limit exceeded. Try again later.';
+            } else if (errorMsg.includes('camera') || errorMsg.includes('permission')) {
+                statusDiv.textContent = '❌ Camera permission denied. Please allow camera access.';
+            } else if (errorMsg.includes('lighting')) {
+                statusDiv.textContent = '⚠️ Poor lighting detected. Move to a well-lit area.';
+            } else {
+                statusDiv.textContent = `❌ Scan failed: ${errorMsg.substring(0, 100)}`;
+            }
+            statusDiv.classList.add('error');
+            
+            // Show reset option
+            resetBtn.style.display = 'block';
+        }
+        
+        // Reset functionality
+        resetBtn.addEventListener('click', () => {
+            resultsDiv.classList.remove('show');
+            resetBtn.style.display = 'none';
+            statusDiv.textContent = '✅ Ready. Tap the VitalLens button above to start a new scan.';
+            statusDiv.classList.remove('error');
+            logDebug('Reset - ready for new scan');
+            
+            // Attempt to reset the component if it has a reset method
+            if (scanner.reset) {
+                scanner.reset();
+            }
+        });
+        
+        // Start initialization
+        init();
     </script>
 </body>
 </html>
