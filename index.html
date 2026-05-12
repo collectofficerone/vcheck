@@ -3,16 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck – Real VitalLens API</title>
+    <title>VitalCheck – Real VitalLens</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            font-family: system-ui, sans-serif;
             background: linear-gradient(145deg, #0a0f1d 0%, #0f1629 100%);
             min-height: 100vh;
             display: flex;
@@ -20,7 +15,6 @@
             align-items: center;
             padding: 16px;
         }
-
         .container {
             max-width: 550px;
             width: 100%;
@@ -30,35 +24,48 @@
             padding: 24px;
             border: 1px solid rgba(255,255,255,0.1);
         }
-
         h1 {
             font-size: 32px;
-            font-weight: 700;
             text-align: center;
             background: linear-gradient(135deg, #60a5fa, #c084fc);
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
-            margin-bottom: 4px;
         }
-
         .subhead {
             text-align: center;
             color: #9ca3af;
             font-size: 14px;
             margin-bottom: 24px;
         }
-
-        /* VitalLens Web Component takes full width */
         vitallens-scan {
             display: block;
             width: 100%;
+            min-height: 450px;
+            background: rgba(0,0,0,0.3);
             border-radius: 32px;
             overflow: hidden;
-            margin-bottom: 20px;
-            min-height: 400px;
         }
-
+        .api-status {
+            background: rgba(34,197,94,0.1);
+            border: 1px solid rgba(34,197,94,0.3);
+            border-radius: 16px;
+            padding: 12px;
+            font-size: 13px;
+            color: #86efac;
+            text-align: center;
+            margin-top: 16px;
+        }
+        .api-status.error {
+            background: rgba(239,68,68,0.1);
+            border-color: rgba(239,68,68,0.3);
+            color: #f87171;
+        }
+        .api-status.warning {
+            background: rgba(245,158,11,0.1);
+            border-color: rgba(245,158,11,0.3);
+            color: #fbbf24;
+        }
         .results-panel {
             background: rgba(255,255,255,0.03);
             border-radius: 24px;
@@ -66,71 +73,23 @@
             margin-top: 20px;
             display: none;
         }
-
-        .results-panel.show {
-            display: block;
-        }
-
+        .results-panel.show { display: block; }
         .metric {
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
             padding: 12px 0;
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
-
-        .metric:last-child {
-            border-bottom: none;
-        }
-
-        .metric-label {
-            color: #9ca3af;
-            font-size: 14px;
-        }
-
-        .metric-value {
-            font-size: 28px;
-            font-weight: 700;
-            color: #f3f4f6;
-        }
-
-        .metric-unit {
-            font-size: 12px;
-            color: #6b7280;
-            font-weight: normal;
-        }
-
-        .confidence {
-            font-size: 11px;
-            color: #22c55e;
-            margin-top: 4px;
-            text-align: right;
-        }
-
-        .api-status {
-            background: rgba(34,197,94,0.1);
-            border: 1px solid rgba(34,197,94,0.3);
-            border-radius: 16px;
-            padding: 10px;
-            font-size: 12px;
-            color: #86efac;
-            text-align: center;
-            margin-top: 16px;
-        }
-
-        .api-status.error {
-            background: rgba(239,68,68,0.1);
-            border-color: rgba(239,68,68,0.3);
-            color: #f87171;
-        }
-
+        .metric:last-child { border-bottom: none; }
+        .metric-label { color: #9ca3af; font-size: 14px; }
+        .metric-value { font-size: 28px; font-weight: 700; color: #f3f4f6; }
+        .metric-unit { font-size: 12px; color: #6b7280; }
         .privacy-note {
             text-align: center;
             font-size: 11px;
             color: #4b5563;
             margin-top: 16px;
         }
-
         button {
             width: 100%;
             padding: 14px;
@@ -142,57 +101,48 @@
             font-size: 14px;
             cursor: pointer;
         }
-
-        button:hover {
-            background: rgba(96,165,250,0.3);
+        button:hover { background: rgba(96,165,250,0.3); }
+        
+        /* Mobile-specific adjustments */
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+            vitallens-scan { min-height: 400px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🩺 VitalCheck</h1>
-        <div class="subhead">Powered by VitalLens API • 30 seconds • No app required</div>
+        <div class="subhead">Powered by VitalLens • 30 seconds • No app required</div>
 
-        <!-- 
-            VITALLENS WEB COMPONENT
-            This is the actual VitalLens integration - not simulated data
-            Replace YOUR_API_KEY with your key from https://rouast.com/api
-        -->
-        <vitallens-scan 
-            id="vitalScan"
-            api-key="poY83wP0pI5rOTK1mUS4d3EzmqOmsEF1nh6yD3fa"
-            method="vitallens"
-            text-ready="✅ Ready - Tap to start"
-            text-scanning="📷 Looking for your face..."
-            text-processing="🧠 Analyzing vital signs..."
-            text-complete="✨ Complete"
-            text-error="⚠️ Please ensure good lighting and try again">
-        </vitallens-scan>
-
-        <div id="apiStatus" class="api-status">
-            🔌 Loading VitalLens API...
+        <div id="mobileWarning" style="display: none;" class="api-status warning">
+            📱 Mobile detected: Tap "Request Camera Access" below if the scan doesn't load.
         </div>
 
+        <vitallens-scan 
+            id="vitalScan"
+            api-key="poY83wP0pI5rOTK1mUS4d3EzmqOmsEF1nh6yD3fa">
+        </vitallens-scan>
+
+        <div id="apiStatus" class="api-status">🔌 Loading VitalLens...</div>
+        
+        <!-- Manual camera request button for mobile -->
+        <button id="requestCameraBtn" style="display: none;">📷 Request Camera Access</button>
+
         <div id="resultsPanel" class="results-panel">
-            <h3 style="color: white; margin-bottom: 16px; font-size: 18px;">📊 Your Results</h3>
+            <h3 style="color: white; margin-bottom: 16px;">📊 Your Results</h3>
             <div class="metric">
                 <span class="metric-label">❤️ Heart Rate</span>
                 <span class="metric-value" id="hrValue">-- <span class="metric-unit">BPM</span></span>
             </div>
-            <div id="hrConfidence" class="confidence"></div>
-            
             <div class="metric">
                 <span class="metric-label">🔄 HRV (SDNN)</span>
                 <span class="metric-value" id="hrvValue">-- <span class="metric-unit">ms</span></span>
             </div>
-            <div id="hrvConfidence" class="confidence"></div>
-            
             <div class="metric">
                 <span class="metric-label">🌬️ Respiratory Rate</span>
                 <span class="metric-value" id="rrValue">-- <span class="metric-unit">/min</span></span>
             </div>
-            <div id="rrConfidence" class="confidence"></div>
-            
             <div class="metric">
                 <span class="metric-label">⚡ Stress Level</span>
                 <span class="metric-value" id="stressValue">-- <span class="metric-unit">%</span></span>
@@ -200,13 +150,9 @@
         </div>
 
         <button id="resetBtn" style="display: none;">Start New Scan</button>
-
-        <div class="privacy-note">
-            🔒 Your video data never leaves this device. VitalLens processes frames locally and discards them immediately.[citation:6]
-        </div>
+        <div class="privacy-note">🔒 Video processed locally — frames are discarded immediately</div>
     </div>
 
-    <!-- Load the official VitalLens JavaScript library from CDN -->
     <script type="module">
         import 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js';
 
@@ -214,25 +160,69 @@
         const resultsPanel = document.getElementById('resultsPanel');
         const resetBtn = document.getElementById('resetBtn');
         const scanner = document.getElementById('vitalScan');
+        const requestCameraBtn = document.getElementById('requestCameraBtn');
+        const mobileWarning = document.getElementById('mobileWarning');
+        
+        // Detect mobile device
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            mobileWarning.style.display = 'block';
+            console.log('Mobile device detected - applying mobile-specific fixes');
+        }
 
-        // Helper function to initialize event listeners and UI
+        // Force camera permission request on mobile before component initializes
+        async function requestCameraPermission() {
+            try {
+                apiStatus.textContent = '📷 Requesting camera permission...';
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach(track => track.stop()); // Stop immediately, just for permission
+                apiStatus.textContent = '✅ Camera permission granted. Loading VitalLens...';
+                apiStatus.classList.remove('error', 'warning');
+                
+                // Reload or reinitialize the component
+                if (scanner && scanner.reload) {
+                    scanner.reload();
+                }
+                return true;
+            } catch (err) {
+                console.error('Camera permission denied:', err);
+                apiStatus.textContent = '⚠️ Camera access required. Please tap the camera button and allow access.';
+                apiStatus.classList.add('error');
+                return false;
+            }
+        }
+        
+        // Show manual camera button on mobile if component doesn't load
+        if (isMobile) {
+            requestCameraBtn.style.display = 'block';
+            requestCameraBtn.addEventListener('click', requestCameraPermission);
+        }
+
         function initVitalLens() {
             console.log('✓ VitalLens component is defined and ready');
             
             const apiKey = scanner.getAttribute('api-key');
-            if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
+            if (!apiKey || apiKey === 'YOUR_API_KEY_HERE' || apiKey === 'poY83wP0pI5rOTK1mUS4d3EzmqOmsEF1nh6yD3fa') {
                 apiStatus.textContent = '⚠️ API key required. Get your free key at https://rouast.com/api';
                 apiStatus.classList.add('error');
             } else {
-                apiStatus.textContent = '✅ VitalLens API ready. Click the button above to start.';
+                apiStatus.textContent = '✅ VitalLens API ready. Click "Start Scan" above.';
                 apiStatus.classList.remove('error');
             }
+            
+            // On mobile, try to auto-request camera
+            if (isMobile) {
+                setTimeout(() => {
+                    if (scanner && !scanner._initialized) {
+                        apiStatus.textContent = '📱 Tap "Request Camera Access" button below to start.';
+                        apiStatus.classList.add('warning');
+                    }
+                }, 3000);
+            }
 
-            // Remove old listeners to prevent duplicates
             scanner.removeEventListener('vitallens-result', handleResults);
             scanner.removeEventListener('vitallens-error', handleError);
-            
-            // Add fresh listeners
             scanner.addEventListener('vitallens-result', handleResults);
             scanner.addEventListener('vitallens-error', handleError);
         }
@@ -248,13 +238,11 @@
             if (heartRate) {
                 document.getElementById('hrValue').innerHTML = Math.round(heartRate) + ' <span class="metric-unit">BPM</span>';
             }
-            
             if (hrv) {
                 document.getElementById('hrvValue').innerHTML = Math.round(hrv) + ' <span class="metric-unit">ms</span>';
                 let stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100)));
                 document.getElementById('stressValue').innerHTML = stress + ' <span class="metric-unit">%</span>';
             }
-            
             if (respRate) {
                 document.getElementById('rrValue').innerHTML = Math.round(respRate) + ' <span class="metric-unit">/min</span>';
             }
@@ -262,29 +250,36 @@
             resultsPanel.classList.add('show');
             resetBtn.style.display = 'block';
             apiStatus.textContent = '✅ Scan complete!';
-            apiStatus.classList.remove('error');
+            apiStatus.classList.remove('error', 'warning');
+            requestCameraBtn.style.display = 'none';
         }
 
         function handleError(event) {
             console.error('VitalLens error:', event.detail);
-            apiStatus.textContent = `⚠️ ${event.detail?.error || 'Scan failed. Ensure good lighting.'}`;
+            const errorMsg = event.detail?.error || 'Scan failed.';
+            
+            if (errorMsg.includes('camera') || errorMsg.includes('permission')) {
+                apiStatus.textContent = '⚠️ Camera permission needed. Tap "Request Camera Access" below.';
+                if (isMobile) requestCameraBtn.style.display = 'block';
+            } else {
+                apiStatus.textContent = `⚠️ ${errorMsg} Ensure good lighting.`;
+            }
             apiStatus.classList.add('error');
         }
 
         // Check if component is already defined
         if (customElements.get('vitallens-scan')) {
-            // Already loaded
             initVitalLens();
         } else {
-            // Wait for it to load
             customElements.whenDefined('vitallens-scan').then(initVitalLens);
         }
 
         resetBtn.addEventListener('click', () => {
             resultsPanel.classList.remove('show');
             resetBtn.style.display = 'none';
-            apiStatus.textContent = '✅ Ready to scan. Click the VitalLens button above.';
-            apiStatus.classList.remove('error');
+            apiStatus.textContent = '✅ Ready to scan. Click "Start Scan" above.';
+            apiStatus.classList.remove('error', 'warning');
+            if (isMobile) requestCameraBtn.style.display = 'block';
         });
     </script>
 </body>
