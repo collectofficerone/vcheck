@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck – Mobile Working</title>
+    <title>VitalCheck – Yangon Proof</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -15,133 +15,270 @@
             justify-content: center;
             align-items: center;
         }
-        .container { max-width: 550px; width: 100%; background: rgba(255,255,255,0.05); border-radius: 48px; padding: 24px; }
-        h1 { font-size: 32px; text-align: center; background: linear-gradient(135deg, #60a5fa, #c084fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
-        .subhead { text-align: center; color: #9ca3af; font-size: 14px; margin-bottom: 20px; }
-        #scanContainer { 
-            width: 100%; 
-            min-height: 400px; 
-            background: rgba(0,0,0,0.3); 
-            border-radius: 24px; 
-            overflow: hidden;
-            margin: 20px 0;
-        }
-        vitallens-scan {
-            display: block;
+        .container {
+            max-width: 550px;
             width: 100%;
-            height: 100%;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 48px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        button { 
-            width: 100%; 
-            padding: 16px; 
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6); 
-            border: none; 
-            border-radius: 48px; 
-            color: white; 
-            font-size: 18px; 
-            font-weight: 600; 
-            cursor: pointer; 
+        h1 {
+            font-size: 32px;
+            text-align: center;
+            background: linear-gradient(135deg, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .subhead {
+            text-align: center;
+            color: #9ca3af;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        video {
+            width: 100%;
+            border-radius: 24px;
+            background: #000;
+            margin-bottom: 20px;
+            aspect-ratio: 4/3;
+            object-fit: cover;
+        }
+        button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border: none;
+            border-radius: 48px;
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
         }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .result { margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 24px; display: none; }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 24px;
+            display: none;
+        }
         .result.show { display: block; }
-        .metric { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
         .metric:last-child { border-bottom: none; }
-        .status { text-align: center; margin: 16px 0; color: #86efac; font-size: 14px; }
+        .metric-label { color: #9ca3af; font-size: 14px; }
+        .metric-value { font-size: 24px; font-weight: 700; color: #f3f4f6; }
+        .status {
+            text-align: center;
+            margin: 16px 0;
+            color: #86efac;
+            font-size: 14px;
+        }
         .status.error { color: #f87171; }
+        .status.warning { color: #fbbf24; }
+        .privacy-note {
+            text-align: center;
+            font-size: 11px;
+            color: #4b5563;
+            margin-top: 16px;
+        }
+        .debug {
+            background: rgba(0,0,0,0.5);
+            border-radius: 12px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 10px;
+            color: #6b7280;
+            margin-top: 16px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🩺 VitalCheck</h1>
-        <div class="subhead">Powered by VitalLens • 30 seconds • No app required</div>
+        <div class="subhead">30 seconds • Works on slow networks • No app required</div>
         
-        <div id="scanContainer">
-            <vitallens-scan 
-                id="vitalScan"
-                api-key="poY83wP0pI5rOTK1mUS4d3EzmqOmsEF1nh6yD3fa"
-                method="vitallens">
-            </vitallens-scan>
-        </div>
-        
-        <div id="status" class="status">🔌 Loading VitalLens...</div>
+        <video id="video" autoplay playsinline muted></video>
+        <button id="startBtn">Start Health Scan</button>
+        <div id="status" class="status">Ready</div>
         
         <div id="results" class="result">
-            <div class="metric"><span>❤️ Heart Rate</span><span id="hr">-- BPM</span></div>
-            <div class="metric"><span>🔄 HRV (SDNN)</span><span id="hrv">-- ms</span></div>
-            <div class="metric"><span>🌬️ Respiration</span><span id="rr">-- /min</span></div>
-            <div class="metric"><span>⚡ Stress Level</span><span id="stress">-- %</span></div>
+            <div class="metric">
+                <span class="metric-label">❤️ Heart Rate</span>
+                <span class="metric-value" id="hr">-- BPM</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">🔄 HRV (SDNN)</span>
+                <span class="metric-value" id="hrv">-- ms</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">🌬️ Respiration</span>
+                <span class="metric-value" id="rr">-- /min</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">⚡ Stress Level</span>
+                <span class="metric-value" id="stress">-- %</span>
+            </div>
         </div>
         
-        <div class="privacy-note" style="text-align: center; font-size: 11px; color: #4b5563; margin-top: 16px;">
-            🔒 Video processed locally — frames are discarded immediately
-        </div>
+        <div class="privacy-note">🔒 Video processed locally — frames are discarded immediately</div>
+        <div id="debug" class="debug"></div>
     </div>
 
     <script type="module">
-        import 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js';
+        import { VitalLens } from 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.esm.js';
         
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
         const resultsDiv = document.getElementById('results');
-        const scanner = document.getElementById('vitalScan');
+        const debugDiv = document.getElementById('debug');
         
-        // Mobile detection
-        const isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        let stream = null;
+        let wakeLock = null;
         
-        if (isMobile) {
-            statusDiv.textContent = '📱 Mobile detected: Tap the VitalLens button below to start';
+        function logDebug(msg) {
+            console.log(msg);
+            debugDiv.innerHTML = `${new Date().toLocaleTimeString()}: ${msg}<br>${debugDiv.innerHTML}`.slice(0, 500);
         }
         
-        // Initialize once component is registered
-        function initVitalLens() {
-            console.log('✓ VitalLens component ready');
-            statusDiv.textContent = isMobile ? '📱 Tap "Start Scan" below' : '✅ Ready. Click "Start Scan" below';
-            statusDiv.classList.remove('error');
-            
-            // Remove old listeners
-            scanner.removeEventListener('vitallens-result', handleResults);
-            scanner.removeEventListener('vitallens-error', handleError);
-            
-            // Add listeners
-            scanner.addEventListener('vitallens-result', handleResults);
-            scanner.addEventListener('vitallens-error', handleError);
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    logDebug('✅ Wake Lock active');
+                } catch (err) {
+                    logDebug('⚠️ Wake Lock failed (non-critical)');
+                }
+            }
         }
         
-        function handleResults(event) {
-            const results = event.detail;
-            console.log('Results:', results);
-            
-            // Extract values
-            const hr = results.heartRate || results.vitals?.heart_rate?.value;
-            const hrv = results.hrv || results.vitals?.hrv_sdnn?.value;
-            const rr = results.respiratoryRate || results.vitals?.respiratory_rate?.value;
-            
-            // Calculate stress from HRV (lower HRV = higher stress)
-            let stress = '--';
-            if (hrv && !isNaN(hrv)) {
-                stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100))) + '%';
+        async function initCamera() {
+            try {
+                statusDiv.textContent = '📷 Requesting camera...';
+                statusDiv.classList.remove('error', 'warning');
+                logDebug('Requesting camera...');
+                
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                video.srcObject = stream;
+                await new Promise((resolve) => video.onloadedmetadata = resolve);
+                await video.play();
+                
+                logDebug('✅ Camera ready');
+                statusDiv.textContent = '✅ Camera ready. Tap Start.';
+                return true;
+            } catch (err) {
+                logDebug(`❌ Camera error: ${err.message}`);
+                statusDiv.textContent = `❌ Camera access denied. Use HTTPS and allow camera.`;
+                statusDiv.classList.add('error');
+                throw err;
+            }
+        }
+        
+        startBtn.onclick = async () => {
+            if (!window.isSecureContext) {
+                statusDiv.textContent = '❌ HTTPS required';
+                statusDiv.classList.add('error');
+                return;
             }
             
-            if (hr) document.getElementById('hr').innerHTML = Math.round(hr) + ' BPM';
-            if (hrv) document.getElementById('hrv').innerHTML = Math.round(hrv) + ' ms';
-            if (rr) document.getElementById('rr').innerHTML = Math.round(rr) + ' /min';
-            if (stress !== '--') document.getElementById('stress').innerHTML = stress;
-            
-            resultsDiv.classList.add('show');
-            statusDiv.textContent = '✅ Scan complete!';
-        }
+            try {
+                if (!stream) await initCamera();
+                await requestWakeLock();
+                
+                statusDiv.textContent = '🔍 Scanning 30 seconds... Keep still';
+                statusDiv.classList.remove('error', 'warning');
+                startBtn.disabled = true;
+                logDebug('Starting VitalLens scan with 45s timeout');
+                
+                // IMPORTANT: REPLACE WITH YOUR FRESH API KEY
+                const scanner = new VitalLens({
+                    apiKey: 'YOUR_FRESH_API_KEY_HERE',  // <-- GET NEW KEY FROM rouast.com/api
+                    method: 'vitallens'
+                });
+                
+                // Yangon-proof timeout (45 seconds max)
+                const scanPromise = scanner.analyze(video, { duration: 30000 });
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Network timeout. Please try again with stable connection.')), 45000)
+                );
+                
+                const result = await Promise.race([scanPromise, timeoutPromise]);
+                logDebug('✅ Scan completed');
+                
+                if (wakeLock) {
+                    await wakeLock.release();
+                    wakeLock = null;
+                    logDebug('Wake Lock released');
+                }
+                
+                // Extract values
+                const hr = result.heartRate || result.vitals?.heart_rate?.value;
+                const hrv = result.hrv || result.vitals?.hrv_sdnn?.value;
+                const rr = result.respiratoryRate || result.vitals?.respiratory_rate?.value;
+                
+                let stress = '--';
+                if (hrv && !isNaN(hrv)) {
+                    stress = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100))) + '%';
+                }
+                
+                if (hr) document.getElementById('hr').innerHTML = Math.round(hr) + ' <span style="font-size:14px;color:#6b7280;">BPM</span>';
+                if (hrv) document.getElementById('hrv').innerHTML = Math.round(hrv) + ' <span style="font-size:14px;color:#6b7280;">ms</span>';
+                if (rr) document.getElementById('rr').innerHTML = Math.round(rr) + ' <span style="font-size:14px;color:#6b7280;">/min</span>';
+                if (stress !== '--') document.getElementById('stress').innerHTML = stress;
+                
+                resultsDiv.classList.add('show');
+                statusDiv.textContent = '✅ Scan complete!';
+                startBtn.disabled = false;
+                
+            } catch (err) {
+                logDebug(`❌ Error: ${err.message}`);
+                
+                if (wakeLock) {
+                    try { await wakeLock.release(); } catch(e) {}
+                    wakeLock = null;
+                }
+                
+                let errorMsg = err.message;
+                if (errorMsg.includes('403') || errorMsg.includes('Unauthorized') || errorMsg.includes('API key')) {
+                    errorMsg = 'Invalid API key. Please check your VitalLens key.';
+                    statusDiv.classList.add('error');
+                } else if (errorMsg.includes('429')) {
+                    errorMsg = 'API rate limit exceeded. Try again later.';
+                    statusDiv.classList.add('error');
+                } else if (errorMsg.includes('timeout')) {
+                    errorMsg = 'Connection timeout. Please check your internet and try again.';
+                    statusDiv.classList.add('warning');
+                } else {
+                    statusDiv.classList.add('error');
+                }
+                
+                statusDiv.textContent = `❌ ${errorMsg}`;
+                startBtn.disabled = false;
+            }
+        };
         
-        function handleError(event) {
-            console.error('VitalLens error:', event.detail);
-            statusDiv.textContent = `⚠️ ${event.detail?.error || 'Scan failed. Ensure good lighting.'}`;
+        // Initial check
+        if (!window.isSecureContext) {
+            statusDiv.textContent = '❌ HTTPS required for camera access';
             statusDiv.classList.add('error');
-        }
-        
-        // Wait for component registration
-        if (customElements.get('vitallens-scan')) {
-            initVitalLens();
+            startBtn.disabled = true;
         } else {
-            customElements.whenDefined('vitallens-scan').then(initVitalLens);
+            logDebug('✅ Secure context (HTTPS) detected');
         }
     </script>
 </body>
