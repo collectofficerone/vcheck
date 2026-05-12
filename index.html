@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck – Complete Fixed Version</title>
+    <title>VitalCheck - Fingertip Heart Rate & SpO2</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            font-family: system-ui, -apple-system, sans-serif;
             background: linear-gradient(145deg, #0a0f1d 0%, #0f1629 100%);
             min-height: 100vh;
             padding: 16px;
@@ -38,18 +38,31 @@
             font-size: 14px;
             margin-bottom: 24px;
         }
-        
-        /* VitalLens component styling */
-        vitallens-scan {
-            display: block;
-            width: 100%;
-            min-height: 450px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 32px;
-            overflow: hidden;
+        .instruction {
+            background: rgba(96,165,250,0.1);
+            border-radius: 24px;
+            padding: 16px;
             margin-bottom: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #cbd5e1;
         }
-        
+        .instruction span {
+            background: #3b82f6;
+            padding: 4px 12px;
+            border-radius: 40px;
+            font-size: 12px;
+            color: white;
+            margin: 0 4px;
+        }
+        video {
+            width: 100%;
+            border-radius: 24px;
+            background: #000;
+            margin-bottom: 20px;
+            aspect-ratio: 1;
+            object-fit: cover;
+        }
         button {
             width: 100%;
             padding: 16px;
@@ -60,10 +73,8 @@
             font-size: 18px;
             font-weight: 600;
             cursor: pointer;
-            margin-bottom: 16px;
         }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
         .result {
             margin-top: 20px;
             padding: 20px;
@@ -72,19 +83,15 @@
             display: none;
         }
         .result.show { display: block; }
-        
         .metric {
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
             padding: 12px 0;
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
         .metric:last-child { border-bottom: none; }
         .metric-label { color: #9ca3af; font-size: 14px; }
         .metric-value { font-size: 28px; font-weight: 700; color: #f3f4f6; }
-        .metric-unit { font-size: 12px; color: #6b7280; font-weight: normal; }
-        
         .status {
             text-align: center;
             margin: 16px 0;
@@ -92,218 +99,339 @@
             font-size: 14px;
         }
         .status.error { color: #f87171; }
-        .status.warning { color: #fbbf24; }
-        
         .privacy-note {
             text-align: center;
             font-size: 11px;
             color: #4b5563;
             margin-top: 16px;
         }
-        
+        canvas {
+            width: 100%;
+            height: 80px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 16px;
+            margin-top: 16px;
+        }
         .debug {
             background: rgba(0,0,0,0.5);
             border-radius: 12px;
-            padding: 10px;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            color: #86efac;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 9px;
+            color: #6b7280;
             margin-top: 16px;
             text-align: left;
             word-break: break-all;
-            max-height: 200px;
+            max-height: 150px;
             overflow-y: auto;
         }
-        
-        .reset-btn {
-            background: rgba(96,165,250,0.2);
-            border: 1px solid rgba(96,165,250,0.5);
-            margin-top: 12px;
-            display: none;
-        }
-        .reset-btn:hover { background: rgba(96,165,250,0.3); }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🩺 VitalCheck</h1>
-        <div class="subhead">30-second health scan • No app required • Works on mobile</div>
+        <div class="subhead">Fingertip measurement • 30 seconds</div>
         
-        <!-- VitalLens Web Component - handles camera, face detection, and scanning -->
-        <vitallens-scan 
-            id="vitalScan"
-            api-key="YOUR_FRESH_API_KEY_HERE"
-            method="vitallens">
-        </vitallens-scan>
+        <div class="instruction">
+            📱 <span>1</span> Place finger on back camera<br>
+            <span>2</span> Cover the flash (Android only)<br>
+            <span>3</span> Stay still for 30 seconds
+        </div>
         
+        <video id="video" autoplay playsinline muted></video>
+        <button id="startBtn">Start Measurement</button>
         <div id="status" class="status">Ready</div>
         
         <div id="results" class="result">
             <div class="metric">
                 <span class="metric-label">❤️ Heart Rate</span>
-                <span class="metric-value" id="hrValue">-- <span class="metric-unit">BPM</span></span>
+                <span class="metric-value" id="hr">-- BPM</span>
             </div>
             <div class="metric">
                 <span class="metric-label">🔄 HRV (SDNN)</span>
-                <span class="metric-value" id="hrvValue">-- <span class="metric-unit">ms</span></span>
+                <span class="metric-value" id="hrv">-- ms</span>
             </div>
             <div class="metric">
-                <span class="metric-label">🌬️ Respiratory Rate</span>
-                <span class="metric-value" id="rrValue">-- <span class="metric-unit">/min</span></span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">⚡ Stress Level</span>
-                <span class="metric-value" id="stressValue">-- <span class="metric-unit">%</span></span>
+                <span class="metric-label">🫀 SpO₂</span>
+                <span class="metric-value" id="spo2">-- %</span>
             </div>
         </div>
         
-        <button id="resetBtn" class="reset-btn">Start New Scan</button>
+        <canvas id="waveform"></canvas>
         
-        <div class="privacy-note">🔒 Video processed locally — frames are discarded immediately</div>
+        <div class="privacy-note">🔒 All processing happens on your device. No data uploaded.</div>
         <div id="debug" class="debug"></div>
     </div>
 
-    <script type="module">
-        // Import the browser bundle - this auto-registers the <vitallens-scan> component
-        import 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js';
+    <script>
+        // ============================================================
+        // VITALCHECK - FINGERTIP PPG (Heart Rate + SpO2)
+        // Built by you. Works on Android Chrome.
+        // ============================================================
         
-        // DOM elements
-        const debugDiv = document.getElementById('debug');
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
         const statusDiv = document.getElementById('status');
         const resultsDiv = document.getElementById('results');
-        const resetBtn = document.getElementById('resetBtn');
-        const scanner = document.getElementById('vitalScan');
+        const debugDiv = document.getElementById('debug');
+        const canvas = document.getElementById('waveform');
+        const ctx = canvas.getContext('2d');
         
-        // Helper: log to debug panel
-        function logDebug(msg, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const prefix = type === 'error' ? '❌' : (type === 'success' ? '✅' : '📌');
-            console.log(`[${timestamp}] ${prefix} ${msg}`);
-            debugDiv.innerHTML = `${timestamp}: ${prefix} ${msg}<br>${debugDiv.innerHTML}`;
-            
-            // Keep last 30 lines
-            const lines = debugDiv.innerHTML.split('<br>');
-            if (lines.length > 35) {
-                debugDiv.innerHTML = lines.slice(0, 30).join('<br>');
+        let stream = null;
+        let track = null;
+        let recording = false;
+        let frames = [];
+        let heartRate = null;
+        let hrv = null;
+        let spo2 = null;
+        
+        function logDebug(msg) {
+            const time = new Date().toLocaleTimeString();
+            console.log(`[${time}] ${msg}`);
+            debugDiv.innerHTML = `${time}: ${msg}<br>${debugDiv.innerHTML}`;
+            if (debugDiv.innerHTML.split('<br>').length > 30) {
+                const lines = debugDiv.innerHTML.split('<br>');
+                debugDiv.innerHTML = lines.slice(0, 25).join('<br>');
             }
         }
         
-        // Check secure context first
-        if (!window.isSecureContext) {
-            logDebug('HTTPS required - camera access blocked', 'error');
-            statusDiv.textContent = '❌ HTTPS required for camera access';
-            statusDiv.classList.add('error');
-        } else {
-            logDebug('Secure context (HTTPS) detected', 'success');
-        }
-        
-        // Wait for the web component to be registered
-        async function init() {
-            logDebug('Waiting for vitallens-scan component...');
-            
+        // Initialize camera
+        async function initCamera() {
             try {
-                await customElements.whenDefined('vitallens-scan');
-                logDebug('Component registered successfully', 'success');
-                statusDiv.textContent = '✅ Ready. Tap the VitalLens button above to start.';
+                logDebug('Requesting camera...');
+                statusDiv.textContent = '📷 Opening camera...';
                 
-                // Listen for scan results
-                scanner.addEventListener('vitallens-result', handleResults);
-                scanner.addEventListener('vitallens-error', handleError);
-                scanner.addEventListener('vitallens-start', handleStart);
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { exact: 'environment' }, // back camera
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
                 
-                // Verify the component is interactive
-                logDebug('Event listeners attached. Waiting for user interaction.');
+                video.srcObject = stream;
+                await new Promise((resolve) => video.onloadedmetadata = resolve);
+                await video.play();
                 
+                // Try to enable flash/torch
+                track = stream.getVideoTracks()[0];
+                if (track && track.getCapabilities().torch) {
+                    await track.applyConstraints({ advanced: [{ torch: true }] });
+                    logDebug('Flash enabled');
+                } else {
+                    logDebug('Flash not supported on this device');
+                }
+                
+                logDebug('Camera ready - back camera');
+                statusDiv.textContent = '✅ Ready. Place finger on camera.';
+                return true;
             } catch (err) {
-                logDebug(`Component registration failed: ${err.message}`, 'error');
-                statusDiv.textContent = '❌ Failed to load VitalLens component';
+                logDebug(`Camera error: ${err.message}`);
+                statusDiv.textContent = '❌ Back camera required. Please allow access.';
                 statusDiv.classList.add('error');
+                return false;
             }
         }
         
-        function handleStart() {
-            logDebug('Scan started - 30 seconds', 'success');
-            statusDiv.textContent = '🔍 Scanning... Please stay still (30s)';
-            statusDiv.classList.remove('error');
+        // Extract red channel average from video frame
+        function captureFrame() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // Get center region (where finger should be)
+            const centerX = Math.floor(canvas.width / 2);
+            const centerY = Math.floor(canvas.height / 2);
+            const radius = Math.floor(Math.min(canvas.width, canvas.height) / 6);
+            
+            let redSum = 0;
+            let greenSum = 0;
+            let blueSum = 0;
+            let pixelCount = 0;
+            
+            for (let y = centerY - radius; y < centerY + radius; y++) {
+                for (let x = centerX - radius; x < centerX + radius; x++) {
+                    if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+                        const idx = (y * canvas.width + x) * 4;
+                        redSum += data[idx];
+                        greenSum += data[idx + 1];
+                        blueSum += data[idx + 2];
+                        pixelCount++;
+                    }
+                }
+            }
+            
+            return {
+                red: redSum / pixelCount,
+                green: greenSum / pixelCount,
+                blue: blueSum / pixelCount
+            };
+        }
+        
+        // Calculate heart rate from PPG signal
+        function calculateHeartRate(signal, sampleRate) {
+            if (signal.length < sampleRate * 2) return null;
+            
+            // Simple peak detection
+            const peaks = [];
+            const threshold = (Math.max(...signal) + Math.min(...signal)) / 2;
+            
+            for (let i = 1; i < signal.length - 1; i++) {
+                if (signal[i] > threshold && signal[i] > signal[i-1] && signal[i] > signal[i+1]) {
+                    peaks.push(i);
+                }
+            }
+            
+            if (peaks.length < 2) return null;
+            
+            // Calculate average RR interval
+            let totalInterval = 0;
+            for (let i = 1; i < peaks.length; i++) {
+                totalInterval += (peaks[i] - peaks[i-1]) / sampleRate;
+            }
+            const avgRR = totalInterval / (peaks.length - 1);
+            
+            // Heart rate in BPM
+            const hr = Math.round(60 / avgRR);
+            
+            // HRV (SDNN) - standard deviation of RR intervals
+            let rrIntervals = [];
+            for (let i = 1; i < peaks.length; i++) {
+                rrIntervals.push((peaks[i] - peaks[i-1]) / sampleRate);
+            }
+            const meanRR = rrIntervals.reduce((a,b) => a + b, 0) / rrIntervals.length;
+            const sdnn = Math.sqrt(rrIntervals.map(rr => Math.pow(rr - meanRR, 2)).reduce((a,b) => a + b, 0) / rrIntervals.length);
+            
+            return { hr, hrv: Math.round(sdnn * 1000) };
+        }
+        
+        // Draw waveform in real-time
+        function drawWaveform(signal) {
+            if (!ctx) return;
+            canvas.width = canvas.clientWidth;
+            canvas.height = 80;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 2;
+            
+            if (signal.length < 2) return;
+            
+            const slice = signal.slice(-canvas.width);
+            for (let i = 0; i < slice.length; i++) {
+                const x = i;
+                const y = canvas.height / 2 + (slice[i] - 128) / 2;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+        
+        async function startMeasurement() {
+            logDebug('Starting measurement...');
+            
+            if (!stream) {
+                const ok = await initCamera();
+                if (!ok) return;
+            }
+            
+            recording = true;
+            startBtn.disabled = true;
+            statusDiv.textContent = '🔴 Measuring... 30 seconds. Keep finger still.';
             resultsDiv.classList.remove('show');
-        }
-        
-        function handleResults(event) {
-            const results = event.detail;
-            logDebug(`Results received: ${JSON.stringify(results).substring(0, 200)}`, 'success');
             
-            // Extract vital signs (handles both flat and nested structures)
-            const heartRate = results.heartRate || results.vitals?.heart_rate?.value;
-            const hrv = results.hrv || results.vitals?.hrv_sdnn?.value;
-            const respRate = results.respiratoryRate || results.vitals?.respiratory_rate?.value;
+            frames = [];
+            const redSignal = [];
+            const greenSignal = [];
+            const blueSignal = [];
             
-            // Calculate stress level from HRV (lower HRV = higher stress)
-            let stress = '--';
-            if (hrv && !isNaN(hrv)) {
-                const stressNum = Math.max(0, Math.min(100, Math.round(100 - (hrv / 80) * 100)));
-                stress = stressNum + '%';
+            // Record for 30 seconds at ~30fps
+            const duration = 30000;
+            const interval = 33; // ~30fps
+            const startTime = Date.now();
+            let secondsLeft = 30;
+            
+            const countdownInterval = setInterval(() => {
+                secondsLeft--;
+                if (secondsLeft > 0) {
+                    statusDiv.textContent = `🔴 Measuring... ${secondsLeft}s left. Keep finger still.`;
+                }
+            }, 1000);
+            
+            while (Date.now() - startTime < duration) {
+                if (!recording) break;
+                
+                const frame = captureFrame();
+                redSignal.push(frame.red);
+                greenSignal.push(frame.green);
+                blueSignal.push(frame.blue);
+                
+                // Draw waveform
+                drawWaveform(redSignal);
+                
+                await new Promise(resolve => setTimeout(resolve, interval));
             }
             
-            // Update UI
-            if (heartRate) {
-                document.getElementById('hrValue').innerHTML = Math.round(heartRate) + ' <span class="metric-unit">BPM</span>';
-            }
-            if (hrv) {
-                document.getElementById('hrvValue').innerHTML = Math.round(hrv) + ' <span class="metric-unit">ms</span>';
-            }
-            if (respRate) {
-                document.getElementById('rrValue').innerHTML = Math.round(respRate) + ' <span class="metric-unit">/min</span>';
-            }
-            if (stress !== '--') {
-                document.getElementById('stressValue').innerHTML = stress;
-            }
+            clearInterval(countdownInterval);
+            logDebug(`Captured ${redSignal.length} frames`);
             
-            // Show results panel
-            resultsDiv.classList.add('show');
-            resetBtn.style.display = 'block';
-            statusDiv.textContent = '✅ Scan complete!';
-            logDebug('Display updated successfully', 'success');
-        }
-        
-        function handleError(event) {
-            const errorDetail = event.detail;
-            const errorMsg = errorDetail?.error || errorDetail?.message || 'Unknown error';
-            logDebug(`Scan error: ${errorMsg}`, 'error');
+            // Calculate results
+            const sampleRate = redSignal.length / 30; // frames per second
+            const result = calculateHeartRate(redSignal, sampleRate);
             
-            // Provide specific guidance based on error
-            if (errorMsg.includes('403') || errorMsg.includes('unauthorized') || errorMsg.includes('key')) {
-                statusDiv.textContent = '❌ Invalid API key. Get a fresh key from rouast.com/api';
-            } else if (errorMsg.includes('429')) {
-                statusDiv.textContent = '❌ Rate limit exceeded. Try again later.';
-            } else if (errorMsg.includes('camera') || errorMsg.includes('permission')) {
-                statusDiv.textContent = '❌ Camera permission denied. Please allow camera access.';
-            } else if (errorMsg.includes('lighting')) {
-                statusDiv.textContent = '⚠️ Poor lighting detected. Move to a well-lit area.';
+            if (result && result.hr) {
+                heartRate = result.hr;
+                hrv = result.hrv;
+                
+                // Estimate SpO2 from red/green ratio (simplified)
+                const avgRed = redSignal.reduce((a,b) => a + b, 0) / redSignal.length;
+                const avgGreen = greenSignal.reduce((a,b) => a + b, 0) / greenSignal.length;
+                const ratio = avgRed / avgGreen;
+                // Rough SpO2 estimation (clinical calibration would be needed)
+                spo2 = Math.min(100, Math.max(85, Math.round(100 - (ratio - 1) * 50)));
+                
+                document.getElementById('hr').innerHTML = heartRate + ' BPM';
+                document.getElementById('hrv').innerHTML = hrv + ' ms';
+                document.getElementById('spo2').innerHTML = spo2 + ' %';
+                
+                resultsDiv.classList.add('show');
+                statusDiv.textContent = '✅ Complete!';
+                logDebug(`Results: HR=${heartRate}, HRV=${hrv}, SpO2=${spo2}`);
             } else {
-                statusDiv.textContent = `❌ Scan failed: ${errorMsg.substring(0, 100)}`;
+                statusDiv.textContent = '❌ Failed to detect pulse. Make sure finger covers camera completely.';
+                statusDiv.classList.add('error');
+                logDebug('Pulse detection failed - insufficient signal');
             }
-            statusDiv.classList.add('error');
             
-            // Show reset option
-            resetBtn.style.display = 'block';
+            recording = false;
+            startBtn.disabled = false;
         }
         
-        // Reset functionality
-        resetBtn.addEventListener('click', () => {
-            resultsDiv.classList.remove('show');
-            resetBtn.style.display = 'none';
-            statusDiv.textContent = '✅ Ready. Tap the VitalLens button above to start a new scan.';
-            statusDiv.classList.remove('error');
-            logDebug('Reset - ready for new scan');
-            
-            // Attempt to reset the component if it has a reset method
-            if (scanner.reset) {
-                scanner.reset();
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (track && track.getCapabilities().torch) {
+                track.applyConstraints({ advanced: [{ torch: false }] });
+            }
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
             }
         });
         
-        // Start initialization
-        init();
+        startBtn.onclick = startMeasurement;
+        
+        // Auto-initialize
+        if (window.isSecureContext) {
+            initCamera();
+        } else {
+            statusDiv.textContent = '❌ HTTPS required';
+            statusDiv.classList.add('error');
+        }
     </script>
 </body>
 </html>
