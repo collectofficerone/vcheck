@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck - Heart Rate Monitor (No Freeze)</title>
+    <title>VitalCheck - Heart Rate Monitor</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -62,6 +62,27 @@
             margin-bottom: 20px;
             aspect-ratio: 1;
             object-fit: cover;
+            display: none;
+        }
+        .finger-guide {
+            width: 100%;
+            border-radius: 24px;
+            background: #0f1629;
+            border: 2px dashed #3b82f6;
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .finger-guide span {
+            font-size: 48px;
+        }
+        .finger-guide p {
+            color: #9ca3af;
+            font-size: 14px;
         }
         button {
             width: 100%;
@@ -77,21 +98,32 @@
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .result {
             margin-top: 20px;
-            padding: 20px;
+            padding: 24px;
             background: rgba(255,255,255,0.05);
             border-radius: 24px;
             display: none;
+            text-align: center;
         }
         .result.show { display: block; }
-        .metric {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+        .heart-rate {
+            font-size: 72px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            line-height: 1;
         }
-        .metric:last-child { border-bottom: none; }
-        .metric-label { color: #9ca3af; font-size: 14px; }
-        .metric-value { font-size: 28px; font-weight: 700; color: #f3f4f6; }
+        .heart-label {
+            color: #9ca3af;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+        .confidence {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #86efac;
+        }
         .status {
             text-align: center;
             margin: 16px 0;
@@ -107,7 +139,7 @@
         }
         canvas {
             width: 100%;
-            height: 80px;
+            height: 100px;
             background: rgba(0,0,0,0.5);
             border-radius: 16px;
             margin-top: 16px;
@@ -129,8 +161,8 @@
             text-align: center;
             font-size: 12px;
             margin-top: 8px;
-            padding: 4px;
-            border-radius: 20px;
+            padding: 8px;
+            border-radius: 40px;
         }
         .signal-good { background: rgba(34,197,94,0.2); color: #86efac; }
         .signal-poor { background: rgba(245,158,11,0.2); color: #fbbf24; }
@@ -139,40 +171,41 @@
 <body>
     <div class="container">
         <h1>🩺 VitalCheck</h1>
-        <div class="subhead">Fingertip measurement • 30 seconds</div>
+        <div class="subhead">Accurate Heart Rate • 30 seconds • No app required</div>
         
         <div class="instruction">
-            📱 <span>1</span> Place finger on back camera<br>
-            <span>2</span> Cover the flash (Android only)<br>
-            <span>3</span> Stay still for 30 seconds
+            📱 <span>1</span> Place finger on BACK camera<br>
+            <span>2</span> Cover the lens completely<br>
+            <span>3</span> Hold VERY still for 30 seconds
         </div>
         
         <video id="video" autoplay playsinline muted></video>
+        <div class="finger-guide" id="fingerGuide">
+            <span>🖐️</span>
+            <p>Place finger on back camera →</p>
+        </div>
+        
         <button id="startBtn">Start Measurement</button>
         <div id="status" class="status">Ready</div>
         <div id="signalQuality" class="signal-quality"></div>
         
         <div id="results" class="result">
-            <div class="metric">
-                <span class="metric-label">❤️ Heart Rate</span>
-                <span class="metric-value" id="hr">-- BPM</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">🔄 HRV (SDNN)</span>
-                <span class="metric-value" id="hrv">-- ms</span>
-            </div>
+            <div class="heart-rate" id="hr">--</div>
+            <div class="heart-label">Beats per minute</div>
+            <div class="confidence" id="confidence"></div>
         </div>
         
         <canvas id="waveform"></canvas>
         
-        <div class="privacy-note">🔒 All processing happens on your device. No data uploaded. (SpO₂ removed - requires medical-grade hardware)</div>
+        <div class="privacy-note">🔒 All processing happens on your device. No data uploaded. Heart rate only (HRV removed for accuracy).</div>
         <div id="debug" class="debug"></div>
     </div>
 
     <script>
         // ============================================================
-        // VITALCHECK - HEART RATE MONITOR (NON-BLOCKING)
-        // Uses requestAnimationFrame - no UI freeze
+        // VITALCHECK - HEART RATE MONITOR ONLY
+        // Removed HRV (was giving garbage data: 214ms etc)
+        // Clean, reliable heart rate using FFT
         // ============================================================
         
         const video = document.getElementById('video');
@@ -183,6 +216,7 @@
         const canvas = document.getElementById('waveform');
         const ctx = canvas.getContext('2d');
         const signalQualityDiv = document.getElementById('signalQuality');
+        const fingerGuide = document.getElementById('fingerGuide');
         
         let stream = null;
         let track = null;
@@ -257,7 +291,6 @@
             const radius = Math.floor(Math.min(tempCanvas.width, tempCanvas.height) / 5);
             
             let redSum = 0;
-            let greenSum = 0;
             let count = 0;
             
             for (let y = centerY - radius; y <= centerY + radius; y++) {
@@ -265,20 +298,19 @@
                     if (x >= 0 && x < tempCanvas.width && y >= 0 && y < tempCanvas.height) {
                         const idx = (y * tempCanvas.width + x) * 4;
                         redSum += data[idx];
-                        greenSum += data[idx + 1];
                         count++;
                     }
                 }
             }
             
-            return { red: redSum / count, green: greenSum / count };
+            return redSum / count;
         }
         
         // Draw waveform
         function drawWaveform(signal) {
             if (!ctx) return;
             canvas.width = canvas.clientWidth;
-            canvas.height = 80;
+            canvas.height = 100;
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.beginPath();
@@ -301,106 +333,152 @@
             ctx.stroke();
         }
         
-        // Calculate heart rate using peak detection
-        function calculateHeartRate(signal, sampleRate) {
-            if (signal.length < sampleRate * 2) {
-                return { hr: null, hrv: null, error: 'Insufficient data' };
+        // Calculate heart rate using FFT (Fast Fourier Transform)
+        function fft(re, im) {
+            const n = re.length;
+            if (n <= 1) return;
+            
+            let j = 0;
+            for (let i = 0; i < n - 1; i++) {
+                if (i < j) {
+                    let tempRe = re[i];
+                    let tempIm = im[i];
+                    re[i] = re[j];
+                    im[i] = im[j];
+                    re[j] = tempRe;
+                    im[j] = tempIm;
+                }
+                let k = n >> 1;
+                while (k <= j) {
+                    j -= k;
+                    k >>= 1;
+                }
+                j += k;
             }
             
-            // Find peaks
-            const peaks = [];
-            const mean = signal.reduce((a,b) => a + b, 0) / signal.length;
-            const std = Math.sqrt(signal.map(x => Math.pow(x - mean, 2)).reduce((a,b) => a + b, 0) / signal.length);
-            const threshold = mean + std * 0.5;
+            for (let len = 2; len <= n; len <<= 1) {
+                const ang = -2 * Math.PI / len;
+                const wlenRe = Math.cos(ang);
+                const wlenIm = Math.sin(ang);
+                for (let i = 0; i < n; i += len) {
+                    let wRe = 1;
+                    let wIm = 0;
+                    for (let j = 0; j < len / 2; j++) {
+                        const uRe = re[i + j];
+                        const uIm = im[i + j];
+                        const vRe = re[i + j + len / 2] * wRe - im[i + j + len / 2] * wIm;
+                        const vIm = re[i + j + len / 2] * wIm + im[i + j + len / 2] * wRe;
+                        re[i + j] = uRe + vRe;
+                        im[i + j] = uIm + vIm;
+                        re[i + j + len / 2] = uRe - vRe;
+                        im[i + j + len / 2] = uIm - vIm;
+                        const nextWRe = wRe * wlenRe - wIm * wlenIm;
+                        const nextWIm = wRe * wlenIm + wIm * wlenRe;
+                        wRe = nextWRe;
+                        wIm = nextWIm;
+                    }
+                }
+            }
+        }
+        
+        function findDominantFrequency(signal, sampleRate) {
+            if (signal.length < 64) {
+                return { heartRate: null, confidence: 0 };
+            }
             
-            for (let i = 2; i < signal.length - 2; i++) {
-                if (signal[i] > threshold &&
-                    signal[i] > signal[i-1] && signal[i] > signal[i-2] &&
-                    signal[i] > signal[i+1] && signal[i] > signal[i+2]) {
-                    peaks.push(i);
+            // Apply Hanning window
+            const n = signal.length;
+            const windowed = signal.map((x, i) => {
+                const hanning = 0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1)));
+                return x * hanning;
+            });
+            
+            let re = [...windowed];
+            let im = new Array(n).fill(0);
+            
+            fft(re, im);
+            
+            const magnitudes = [];
+            for (let i = 0; i < n / 2; i++) {
+                magnitudes.push(Math.sqrt(re[i] * re[i] + im[i] * im[i]));
+            }
+            
+            // Heart rate range: 40-180 BPM = 0.67-3.0 Hz
+            const minFreq = 0.67;
+            const maxFreq = 3.0;
+            const freqBin = sampleRate / n;
+            
+            const startBin = Math.max(1, Math.floor(minFreq / freqBin));
+            const endBin = Math.min(magnitudes.length - 1, Math.floor(maxFreq / freqBin));
+            
+            let maxMagnitude = 0;
+            let dominantBin = startBin;
+            for (let i = startBin; i <= endBin; i++) {
+                if (magnitudes[i] > maxMagnitude) {
+                    maxMagnitude = magnitudes[i];
+                    dominantBin = i;
                 }
             }
             
-            if (peaks.length < 3) {
-                return { hr: null, hrv: null, error: 'Insufficient peaks' };
+            // Calculate confidence (peak prominence)
+            let totalPower = 0;
+            for (let i = startBin; i <= endBin; i++) {
+                totalPower += magnitudes[i];
+            }
+            const confidence = totalPower > 0 ? Math.min(95, Math.round((maxMagnitude / totalPower) * 100)) : 0;
+            
+            const frequency = dominantBin * freqBin;
+            const heartRate = Math.round(frequency * 60);
+            
+            // Validate
+            if (heartRate < 40 || heartRate > 180 || confidence < 30) {
+                return { heartRate: null, confidence: 0 };
             }
             
-            // Calculate RR intervals
-            const rrIntervals = [];
-            for (let i = 1; i < peaks.length; i++) {
-                rrIntervals.push((peaks[i] - peaks[i-1]) / sampleRate);
-            }
-            
-            // Remove outliers
-            const meanRR = rrIntervals.reduce((a,b) => a + b, 0) / rrIntervals.length;
-            const validRR = rrIntervals.filter(rr => Math.abs(rr - meanRR) < meanRR * 0.3);
-            
-            if (validRR.length < 2) {
-                return { hr: null, hrv: null, error: 'No valid RR intervals' };
-            }
-            
-            const avgRR = validRR.reduce((a,b) => a + b, 0) / validRR.length;
-            const hr = Math.round(60 / avgRR);
-            
-            // HRV - RMSSD
-            let sumSquaredDiffs = 0;
-            for (let i = 1; i < validRR.length; i++) {
-                const diff = validRR[i] - validRR[i-1];
-                sumSquaredDiffs += diff * diff;
-            }
-            const rmssd = Math.sqrt(sumSquaredDiffs / (validRR.length - 1)) * 1000;
-            
-            // Confidence based on peak consistency
-            const confidence = Math.min(95, Math.round((validRR.length / rrIntervals.length) * 100));
-            
-            return { hr, hrv: Math.round(rmssd), confidence };
+            return { heartRate, confidence };
         }
         
-        // Main capture loop using requestAnimationFrame (non-blocking)
+        // Main capture loop
         function captureLoop() {
             if (!recording) return;
             
             const now = Date.now();
             const elapsed = now - startTime;
             
-            // Update countdown display
             const secondsLeft = Math.max(0, 30 - Math.floor(elapsed / 1000));
-            statusDiv.textContent = `🔴 Measuring... ${secondsLeft}s left. Keep finger still.`;
+            statusDiv.textContent = `🔴 Measuring... ${secondsLeft}s left. Hold VERY still.`;
             
-            // Capture frame
-            const ppg = capturePPG();
-            redSignal.push(ppg.red);
+            const value = capturePPG();
+            redSignal.push(value);
             timestamps.push(now);
             frameCount++;
             
-            // Update waveform every few frames
             if (frameCount % 5 === 0) {
                 drawWaveform(redSignal);
                 
-                // Show signal quality
                 if (redSignal.length > 30) {
                     const recent = redSignal.slice(-30);
-                    const variance = recent.reduce((a,b) => a + Math.pow(b - (recent.reduce((x,y) => x + y, 0)/30), 2), 0) / 30;
-                    if (variance < 5) {
-                        signalQualityDiv.textContent = '⚠️ Low signal. Press finger firmly.';
+                    const mean = recent.reduce((a,b) => a + b, 0) / 30;
+                    const variance = recent.reduce((a,b) => a + Math.pow(b - mean, 2), 0) / 30;
+                    
+                    if (variance < 3) {
+                        signalQualityDiv.textContent = '⚠️ Poor signal. Press finger firmly, cover lens completely.';
                         signalQualityDiv.className = 'signal-quality signal-poor';
-                    } else if (variance > 20) {
-                        signalQualityDiv.textContent = '✅ Good signal. Keep still.';
+                    } else if (variance > 15) {
+                        signalQualityDiv.textContent = '✅ Good signal. Keep holding still.';
                         signalQualityDiv.className = 'signal-quality signal-good';
                     } else {
-                        signalQualityDiv.textContent = '📊 Signal OK. Continue holding.';
+                        signalQualityDiv.textContent = '📊 Signal OK. Continue holding still.';
                         signalQualityDiv.className = 'signal-quality';
                     }
                 }
             }
             
-            // Check if done
             if (elapsed >= 30000) {
                 endMeasurement();
                 return;
             }
             
-            // Schedule next frame
             animationId = requestAnimationFrame(captureLoop);
         }
         
@@ -408,25 +486,23 @@
             recording = false;
             if (animationId) cancelAnimationFrame(animationId);
             
-            logDebug(`Captured ${redSignal.length} frames in ${timestamps[timestamps.length-1] - timestamps[0]}ms`);
+            logDebug(`Captured ${redSignal.length} frames`);
             
-            // Calculate actual sample rate
-            const actualDuration = (timestamps[timestamps.length-1] - timestamps[0]) / 1000;
+            const actualDuration = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
             const sampleRate = redSignal.length / actualDuration;
-            logDebug(`Actual sample rate: ${sampleRate.toFixed(2)} FPS`);
+            logDebug(`Sample rate: ${sampleRate.toFixed(2)} FPS`);
             
-            // Detrend and normalize signal
+            // Detrend signal
             const mean = redSignal.reduce((a,b) => a + b, 0) / redSignal.length;
             const detrended = redSignal.map(x => x - mean);
             const maxVal = Math.max(...detrended.map(Math.abs));
-            const normalized = detrended.map(x => x / maxVal);
+            const normalized = detrended.map(x => x / (maxVal || 1));
             
-            // Calculate results
-            const result = calculateHeartRate(normalized, sampleRate);
+            const result = findDominantFrequency(normalized, sampleRate);
             
-            if (result.hr && result.hr >= 40 && result.hr <= 180) {
-                document.getElementById('hr').innerHTML = result.hr + ' BPM';
-                document.getElementById('hrv').innerHTML = result.hrv + ' ms';
+            if (result.heartRate && result.heartRate >= 40 && result.heartRate <= 180) {
+                document.getElementById('hr').innerHTML = result.heartRate;
+                document.getElementById('confidence').innerHTML = `Confidence: ${result.confidence}%`;
                 
                 resultsDiv.classList.add('show');
                 
@@ -438,16 +514,15 @@
                     statusDiv.classList.add('error');
                 }
                 
-                logDebug(`Results: HR=${result.hr}, HRV=${result.hrv}, Confidence=${result.confidence}%`);
+                logDebug(`Heart Rate: ${result.heartRate} BPM, Confidence: ${result.confidence}%`);
             } else {
-                statusDiv.textContent = '❌ Could not detect pulse. Make sure finger covers lens completely.';
+                statusDiv.textContent = '❌ Could not detect pulse. Make sure finger covers lens completely and hold still.';
                 statusDiv.classList.add('error');
                 logDebug('Pulse detection failed');
             }
             
-            // Hide video, show guide again
             video.style.display = 'none';
-            document.getElementById('fingerGuide')?.remove();
+            fingerGuide.style.display = 'flex';
             
             startBtn.disabled = false;
             startBtn.textContent = 'Start Measurement';
@@ -463,7 +538,6 @@
                 if (!ok) return;
             }
             
-            // Reset data
             redSignal = [];
             timestamps = [];
             frameCount = 0;
@@ -474,17 +548,15 @@
             signalQualityDiv.textContent = '';
             signalQualityDiv.className = 'signal-quality';
             
-            // Show video
             video.style.display = 'block';
+            fingerGuide.style.display = 'none';
             
-            // Wait a moment for camera to adjust
             await new Promise(resolve => setTimeout(resolve, 500));
             
             startTime = Date.now();
             captureLoop();
         }
         
-        // Cleanup
         window.addEventListener('beforeunload', () => {
             if (track && track.getCapabilities().torch) {
                 track.applyConstraints({ advanced: [{ torch: false }] });
@@ -497,7 +569,6 @@
         
         startBtn.onclick = startMeasurement;
         
-        // Initialize
         if (window.isSecureContext) {
             initCamera();
         } else {
