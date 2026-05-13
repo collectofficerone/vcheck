@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>VitalCheck - Heart Rate Monitor</title>
+    <title>VitalCheck - Professional BPM</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -105,6 +105,7 @@
             font-size: 14px;
         }
         .status.error { color: #f87171; }
+        .status.warning { color: #fbbf24; }
         .privacy-note {
             text-align: center;
             font-size: 11px;
@@ -131,48 +132,51 @@
             max-height: 150px;
             overflow-y: auto;
         }
-        .signal-quality {
+        .segment-info {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #86efac;
             text-align: center;
-            font-size: 12px;
-            margin-top: 8px;
-            padding: 4px;
-            border-radius: 20px;
         }
-        .signal-good { background: rgba(34,197,94,0.2); color: #86efac; }
-        .signal-poor { background: rgba(245,158,11,0.2); color: #fbbf24; }
+        .formula {
+            margin-top: 8px;
+            font-size: 10px;
+            color: #6b7280;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🩺 VitalCheck</h1>
-        <div class="subhead">Fingertip measurement • 30 seconds</div>
+        <div class="subhead">Professional BPM • (Beats ÷ Seconds) × 60</div>
         
         <div class="instruction">
             📱 <span>1</span> Place finger on BACK camera<br>
             <span>2</span> Cover the lens completely<br>
-            <span>3</span> Hold VERY still for 30 seconds
+            <span>3</span> Keep as still as possible
         </div>
         
         <video id="video" autoplay playsinline muted></video>
-        <button id="startBtn">Start Measurement</button>
+        <button id="startBtn">Start Measurement (30s max)</button>
         <div id="status" class="status">Ready</div>
-        <div id="signalQuality" class="signal-quality"></div>
         
         <div id="results" class="result">
             <div class="heart-rate" id="hr">--</div>
             <div class="heart-label">Beats per minute</div>
+            <div id="segmentInfo" class="segment-info"></div>
+            <div id="formulaInfo" class="formula"></div>
         </div>
         
         <canvas id="waveform"></canvas>
-        
-        <div class="privacy-note">🔒 All processing happens on your device. No data uploaded.</div>
         <div id="debug" class="debug"></div>
     </div>
 
     <script>
         // ============================================================
-        // VITALCHECK - HEART RATE ONLY
-        // Simple, fast, no freeze, no HRV
+        // PROFESSIONAL BPM CALCULATION
+        // Formula: BPM = (Beats Counted / Segment Duration) × 60
+        // No hardcoded multipliers. Pure math.
         // ============================================================
         
         const video = document.getElementById('video');
@@ -182,15 +186,30 @@
         const debugDiv = document.getElementById('debug');
         const canvas = document.getElementById('waveform');
         const ctx = canvas.getContext('2d');
-        const signalQualityDiv = document.getElementById('signalQuality');
         
         let stream = null;
         let track = null;
         let recording = false;
         let captureInterval = null;
         let startTime = null;
-        let redSignal = [];
-        let timestamps = [];
+        
+        let waveformBuffer = [];
+        
+        // Beat tracking
+        let lastRedValue = 0;
+        let lastBeatTimestamp = 0;
+        let isGoingDown = false;
+        
+        // Segment tracking
+        let currentSegmentStart = null;
+        let currentSegmentBeats = [];
+        let bestSegment = {
+            start: null,
+            end: null,
+            beatCount: 0,
+            duration: 0,
+            bpm: 0
+        };
         
         function logDebug(msg) {
             const time = new Date().toLocaleTimeString();
@@ -202,7 +221,6 @@
             }
         }
         
-        // Initialize camera
         async function initCamera() {
             try {
                 logDebug('Requesting back camera...');
@@ -224,8 +242,6 @@
                 if (track && track.getCapabilities().torch) {
                     await track.applyConstraints({ advanced: [{ torch: true }] });
                     logDebug('Flash enabled');
-                } else {
-                    logDebug('Flash not supported');
                 }
                 
                 logDebug('Camera ready');
@@ -233,14 +249,13 @@
                 return true;
             } catch (err) {
                 logDebug(`Camera error: ${err.message}`);
-                statusDiv.textContent = '❌ Back camera required. Please allow access.';
+                statusDiv.textContent = '❌ Back camera required.';
                 statusDiv.classList.add('error');
                 return false;
             }
         }
         
-        // Extract PPG signal
-        function capturePPG() {
+        function getRedValue() {
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = video.videoWidth;
             tempCanvas.height = video.videoHeight;
@@ -270,9 +285,8 @@
             return redSum / count;
         }
         
-        // Draw waveform
-        function drawWaveform(signal) {
-            if (!ctx) return;
+        function drawWaveform() {
+            if (!ctx || waveformBuffer.length < 2) return;
             canvas.width = canvas.clientWidth;
             canvas.height = 80;
             
@@ -281,9 +295,7 @@
             ctx.strokeStyle = '#22d3ee';
             ctx.lineWidth = 2;
             
-            if (signal.length < 2) return;
-            
-            const slice = signal.slice(-canvas.width);
+            const slice = waveformBuffer.slice(-canvas.width);
             const min = Math.min(...slice);
             const max = Math.max(...slice);
             const range = max - min || 1;
@@ -297,83 +309,100 @@
             ctx.stroke();
         }
         
-        // Simple peak detection for heart rate
-        function calculateHeartRate(signal, sampleRate) {
-            if (signal.length < sampleRate * 2) {
-                return null;
+        function isSignalGood(redValue) {
+            if (isNaN(redValue) || redValue === 0) return false;
+            if (lastRedValue !== 0) {
+                const change = Math.abs(redValue - lastRedValue);
+                if (change > 30) return false;
             }
-            
-            // Find peaks
-            const peaks = [];
-            const mean = signal.reduce((a,b) => a + b, 0) / signal.length;
-            const std = Math.sqrt(signal.map(x => Math.pow(x - mean, 2)).reduce((a,b) => a + b, 0) / signal.length);
-            const threshold = mean + std * 0.5;
-            
-            for (let i = 2; i < signal.length - 2; i++) {
-                if (signal[i] > threshold &&
-                    signal[i] > signal[i-1] && signal[i] > signal[i-2] &&
-                    signal[i] > signal[i+1] && signal[i] > signal[i+2]) {
-                    peaks.push(i);
-                }
-            }
-            
-            if (peaks.length < 3) {
-                return null;
-            }
-            
-            // Calculate average RR interval
-            let totalInterval = 0;
-            for (let i = 1; i < peaks.length; i++) {
-                totalInterval += (peaks[i] - peaks[i-1]) / sampleRate;
-            }
-            const avgRR = totalInterval / (peaks.length - 1);
-            
-            let hr = Math.round(60 / avgRR);
-            
-            // Cap to realistic range
-            if (hr < 40) hr = 40;
-            if (hr > 180) hr = 180;
-            
-            return hr;
+            return true;
         }
         
-        // Capture loop
+        // PROFESSIONAL BEAT DETECTION
+        function detectBeat(redValue, timestamp) {
+            const signalGood = isSignalGood(redValue);
+            
+            if (!signalGood) {
+                // Close current segment if one exists
+                if (currentSegmentStart !== null && currentSegmentBeats.length >= 5) {
+                    const duration = (timestamp - currentSegmentStart) / 1000;
+                    if (duration >= 10 && duration > bestSegment.duration) {
+                        const bpm = (currentSegmentBeats.length / duration) * 60;
+                        bestSegment = {
+                            start: currentSegmentStart,
+                            end: timestamp,
+                            beatCount: currentSegmentBeats.length,
+                            duration: duration,
+                            bpm: Math.round(bpm)
+                        };
+                        logDebug(`📊 Best segment: ${duration.toFixed(2)}s, ${currentSegmentBeats.length} beats, ${Math.round(bpm)} BPM`);
+                    }
+                    currentSegmentStart = null;
+                    currentSegmentBeats = [];
+                }
+                lastRedValue = redValue;
+                return;
+            }
+            
+            // Start new segment if needed
+            if (currentSegmentStart === null) {
+                currentSegmentStart = timestamp;
+                currentSegmentBeats = [];
+                logDebug(`✅ Clean segment started at ${((timestamp - startTime)/1000).toFixed(1)}s`);
+            }
+            
+            // Beat detection: valley → peak pattern
+            if (redValue < lastRedValue - 2) {
+                isGoingDown = true;
+            }
+            
+            if (isGoingDown && redValue > lastRedValue + 2) {
+                const now = timestamp;
+                if (now - lastBeatTimestamp > 250) { // Min 250ms = 240 BPM max
+                    currentSegmentBeats.push(now);
+                    lastBeatTimestamp = now;
+                    
+                    // Live BPM update using current segment
+                    const elapsed = (now - currentSegmentStart) / 1000;
+                    if (elapsed >= 5 && currentSegmentBeats.length >= 3) {
+                        const liveBPM = Math.round((currentSegmentBeats.length / elapsed) * 60);
+                        if (liveBPM >= 40 && liveBPM <= 180) {
+                            document.getElementById('hr').innerHTML = liveBPM;
+                            resultsDiv.classList.add('show');
+                            document.getElementById('segmentInfo').innerHTML = `📊 Live: ${currentSegmentBeats.length} beats in ${elapsed.toFixed(1)}s`;
+                            document.getElementById('formulaInfo').innerHTML = `${currentSegmentBeats.length} ÷ ${elapsed.toFixed(1)} × 60 = ${liveBPM} BPM`;
+                        }
+                    }
+                    
+                    // Flash feedback
+                    statusDiv.style.backgroundColor = 'rgba(96,165,250,0.3)';
+                    setTimeout(() => {
+                        if (statusDiv) statusDiv.style.backgroundColor = '';
+                    }, 100);
+                }
+                isGoingDown = false;
+            }
+            
+            lastRedValue = redValue;
+        }
+        
         function captureFrame() {
             if (!recording) return;
             
             const now = Date.now();
-            const elapsed = now - startTime;
+            const elapsed = (now - startTime) / 1000;
+            const secondsLeft = Math.max(0, 30 - Math.floor(elapsed));
             
-            const secondsLeft = Math.max(0, 30 - Math.floor(elapsed / 1000));
-            statusDiv.textContent = `🔴 Measuring... ${secondsLeft}s left. Keep finger still.`;
+            statusDiv.textContent = `🔴 Recording... ${secondsLeft}s left`;
             
-            const value = capturePPG();
-            redSignal.push(value);
-            timestamps.push(now);
+            const redValue = getRedValue();
+            waveformBuffer.push(redValue);
+            if (waveformBuffer.length > 300) waveformBuffer.shift();
+            drawWaveform();
             
-            // Update display every 10 frames
-            if (redSignal.length % 10 === 0) {
-                drawWaveform(redSignal);
-                
-                if (redSignal.length > 30) {
-                    const recent = redSignal.slice(-30);
-                    const mean = recent.reduce((a,b) => a + b, 0) / 30;
-                    const variance = recent.reduce((a,b) => a + Math.pow(b - mean, 2), 0) / 30;
-                    
-                    if (variance < 3) {
-                        signalQualityDiv.textContent = '⚠️ Poor signal. Press finger firmly.';
-                        signalQualityDiv.className = 'signal-quality signal-poor';
-                    } else if (variance > 15) {
-                        signalQualityDiv.textContent = '✅ Good signal. Keep still.';
-                        signalQualityDiv.className = 'signal-quality signal-good';
-                    } else {
-                        signalQualityDiv.textContent = '📊 Signal OK. Continue holding.';
-                        signalQualityDiv.className = 'signal-quality';
-                    }
-                }
-            }
+            detectBeat(redValue, now);
             
-            if (elapsed >= 30000) {
+            if (elapsed >= 30) {
                 endMeasurement();
             }
         }
@@ -385,28 +414,46 @@
                 captureInterval = null;
             }
             
-            logDebug(`Captured ${redSignal.length} frames`);
+            const finalTime = Date.now();
             
-            const actualDuration = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
-            const sampleRate = redSignal.length / actualDuration;
-            logDebug(`Sample rate: ${sampleRate.toFixed(2)} FPS`);
+            // Close any open segment
+            if (currentSegmentStart !== null && currentSegmentBeats.length >= 5) {
+                const duration = (finalTime - currentSegmentStart) / 1000;
+                if (duration > bestSegment.duration) {
+                    const bpm = (currentSegmentBeats.length / duration) * 60;
+                    bestSegment = {
+                        start: currentSegmentStart,
+                        end: finalTime,
+                        beatCount: currentSegmentBeats.length,
+                        duration: duration,
+                        bpm: Math.round(bpm)
+                    };
+                }
+            }
             
-            // Detrend signal
-            const mean = redSignal.reduce((a,b) => a + b, 0) / redSignal.length;
-            const detrended = redSignal.map(x => x - mean);
+            logDebug(`========================================`);
+            logDebug(`Total recording: ${((finalTime - startTime)/1000).toFixed(1)} seconds`);
             
-            const hr = calculateHeartRate(detrended, sampleRate);
-            
-            if (hr && hr >= 40 && hr <= 180) {
-                document.getElementById('hr').innerHTML = hr;
+            if (bestSegment.duration >= 10 && bestSegment.beatCount >= 5) {
+                // PROFESSIONAL FORMULA
+                // BPM = (Beats / Seconds) × 60
+                const bpm = Math.round((bestSegment.beatCount / bestSegment.duration) * 60);
+                
+                logDebug(`📊 BEST SEGMENT:`);
+                logDebug(`   Duration: ${bestSegment.duration.toFixed(2)} seconds`);
+                logDebug(`   Beats counted: ${bestSegment.beatCount}`);
+                logDebug(`   Formula: ${bestSegment.beatCount} / ${bestSegment.duration.toFixed(2)} × 60 = ${bpm} BPM`);
+                
+                document.getElementById('hr').innerHTML = bpm;
+                document.getElementById('segmentInfo').innerHTML = `📊 Used ${bestSegment.beatCount} beats over ${bestSegment.duration.toFixed(1)} seconds of clean signal`;
+                document.getElementById('formulaInfo').innerHTML = `${bestSegment.beatCount} ÷ ${bestSegment.duration.toFixed(1)} × 60 = ${bpm} BPM`;
                 resultsDiv.classList.add('show');
-                statusDiv.textContent = '✅ Measurement complete!';
-                statusDiv.classList.remove('error');
-                logDebug(`Heart Rate: ${hr} BPM`);
+                statusDiv.textContent = `✅ Complete! ${bpm} BPM`;
+                logDebug(`✅ FINAL HEART RATE: ${bpm} BPM`);
             } else {
-                statusDiv.textContent = '❌ Could not detect pulse. Make sure finger covers lens completely.';
+                statusDiv.textContent = `❌ Could not get enough clean signal. ${bestSegment.duration > 0 ? `Only ${bestSegment.duration.toFixed(1)}s of clean data.` : 'No clean signal detected.'}`;
                 statusDiv.classList.add('error');
-                logDebug('Pulse detection failed');
+                logDebug(`❌ Measurement failed - insufficient clean data (${bestSegment.duration.toFixed(1)}s, ${bestSegment.beatCount} beats)`);
             }
             
             startBtn.disabled = false;
@@ -416,34 +463,39 @@
         async function startMeasurement() {
             if (recording) return;
             
-            logDebug('Starting measurement...');
+            logDebug(`========================================`);
+            logDebug(`Professional BPM calculation`);
+            logDebug(`Formula: BPM = (Beats / Seconds) × 60`);
+            logDebug(`Recording max 30 seconds`);
+            logDebug(`Will find best continuous clean segment ≥10 seconds`);
             
             if (!stream) {
                 const ok = await initCamera();
                 if (!ok) return;
             }
             
-            // Reset
-            redSignal = [];
-            timestamps = [];
+            // Reset everything
+            waveformBuffer = [];
+            lastRedValue = 0;
+            lastBeatTimestamp = 0;
+            isGoingDown = false;
+            currentSegmentStart = null;
+            currentSegmentBeats = [];
+            bestSegment = { start: null, end: null, beatCount: 0, duration: 0, bpm: 0 };
+            
             recording = true;
             startBtn.disabled = true;
-            startBtn.textContent = 'Measuring...';
+            startBtn.textContent = 'Recording (30s max)...';
             resultsDiv.classList.remove('show');
-            signalQualityDiv.textContent = '';
-            signalQualityDiv.className = 'signal-quality';
             
             video.style.display = 'block';
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
             startTime = Date.now();
-            
-            // Simple setInterval - no complex math that could freeze
-            captureInterval = setInterval(captureFrame, 33);
+            captureInterval = setInterval(captureFrame, 50);
         }
         
-        // Cleanup
         window.addEventListener('beforeunload', () => {
             if (track && track.getCapabilities().torch) {
                 track.applyConstraints({ advanced: [{ torch: false }] });
