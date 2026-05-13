@@ -144,6 +144,63 @@
             color: #6b7280;
             font-family: monospace;
         }
+        
+        /* Donation Section Styles */
+        .donation-section {
+            margin-top: 24px;
+            padding: 20px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 24px;
+            text-align: center;
+            display: none;
+            border: 1px solid rgba(255,215,0,0.3);
+        }
+        .donation-section.show {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .donation-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fbbf24;
+            margin-bottom: 12px;
+        }
+        .donation-text {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-bottom: 16px;
+        }
+        .kpay-qr {
+            width: 180px;
+            height: 180px;
+            margin: 0 auto 12px;
+            background: white;
+            border-radius: 16px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .kpay-qr img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .kpay-number {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fbbf24;
+            margin-bottom: 8px;
+        }
+        .support-message {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 12px;
+        }
     </style>
 </head>
 <body>
@@ -169,14 +226,30 @@
         </div>
         
         <canvas id="waveform"></canvas>
+        
+        <!-- DONATION SECTION - Appears only after scan completes -->
+        <div id="donationSection" class="donation-section">
+            <div class="donation-title">💰 Support Tech Studio</div>
+            <div class="donation-text">သင့်ရဲ့ လှူဒါန်းမှုက ကျွန်ုပ်တို့ရဲ့ ဆက်လက်လုပ်ဆောင်မှုအတွက် အားဖြစ်စေပါတယ်</div>
+            
+            <!-- REPLACE THIS IMAGE URL WITH YOUR ACTUAL KBZPay/KPay QR CODE IMAGE -->
+            <div class="kpay-qr">
+                <img id="kpayQR" src="https://placehold.co/200x200/fbbf24/1a1a2e?text=KBZPay+QR" alt="KBZPay QR Code">
+                <!-- ^^^ REPLACE THE IMAGE URL ABOVE WITH YOUR REAL QR CODE IMAGE ^^^ -->
+            </div>
+            <div class="kpay-number">KBZPay: 09-123456789</div>
+            <div class="support-message">You can support Tech Studio with KBZPay/KPay</div>
+        </div>
+        
         <div id="debug" class="debug"></div>
+        <div class="privacy-note">🔒 All processing happens on your device. No data uploaded.</div>
     </div>
 
     <script>
         // ============================================================
         // PROFESSIONAL BPM CALCULATION
         // Formula: BPM = (Beats Counted / Segment Duration) × 60
-        // No hardcoded multipliers. Pure math.
+        // Donation QR appears ONLY after 30-second scan completes
         // ============================================================
         
         const video = document.getElementById('video');
@@ -186,6 +259,7 @@
         const debugDiv = document.getElementById('debug');
         const canvas = document.getElementById('waveform');
         const ctx = canvas.getContext('2d');
+        const donationSection = document.getElementById('donationSection');
         
         let stream = null;
         let track = null;
@@ -358,7 +432,7 @@
             
             if (isGoingDown && redValue > lastRedValue + 2) {
                 const now = timestamp;
-                if (now - lastBeatTimestamp > 250) { // Min 250ms = 240 BPM max
+                if (now - lastBeatTimestamp > 250) {
                     currentSegmentBeats.push(now);
                     lastBeatTimestamp = now;
                     
@@ -435,8 +509,6 @@
             logDebug(`Total recording: ${((finalTime - startTime)/1000).toFixed(1)} seconds`);
             
             if (bestSegment.duration >= 10 && bestSegment.beatCount >= 5) {
-                // PROFESSIONAL FORMULA
-                // BPM = (Beats / Seconds) × 60
                 const bpm = Math.round((bestSegment.beatCount / bestSegment.duration) * 60);
                 
                 logDebug(`📊 BEST SEGMENT:`);
@@ -458,6 +530,11 @@
             
             startBtn.disabled = false;
             startBtn.textContent = 'Start Measurement';
+            
+            // SHOW DONATION QR CODE AFTER SCAN COMPLETES
+            // This appears ONLY after the 30-second measurement ends
+            donationSection.classList.add('show');
+            logDebug('💰 Donation QR code displayed');
         }
         
         async function startMeasurement() {
@@ -473,6 +550,9 @@
                 const ok = await initCamera();
                 if (!ok) return;
             }
+            
+            // HIDE donation section when starting new measurement
+            donationSection.classList.remove('show');
             
             // Reset everything
             waveformBuffer = [];
